@@ -30,6 +30,7 @@ from .formatting import (
     smart_truncate,
 )
 from .ratelimit import get_limiter
+from .scoring import compute_quality_bonus
 from .utils import normalize_url, title_similarity  # noqa: F401 (used in _merge_rrf)
 
 # 配置日志
@@ -92,7 +93,20 @@ def _merge_rrf(
             if len(result.title) > len(url_info[canonical]["title"]):
                 url_info[canonical]["title"] = result.title
 
-    sorted_urls = sorted(url_scores.keys(), key=lambda u: url_scores[u], reverse=True)
+    # 应用质量加分
+    final_scores: dict[str, float] = {}
+    for url, rrf_score in url_scores.items():
+        info = url_info[url]
+        quality_bonus = compute_quality_bonus(
+            url=url,
+            title=info["title"],
+            snippet=info["snippet"],
+            engine_count=len(info["engines"]),
+            published_age=info.get("published_age", ""),
+        )
+        final_scores[url] = rrf_score + quality_bonus
+
+    sorted_urls = sorted(final_scores.keys(), key=lambda u: final_scores[u], reverse=True)
 
     # 跨域名标题去重
     seen_hosts: dict[str, list[str]] = {}  # host -> [title1, title2, ...]
@@ -120,7 +134,7 @@ def _merge_rrf(
             "url": info["url"],
             "snippet": info["snippet"],
             "engines": info["engines"],
-            "score": url_scores[url],
+            "score": final_scores[url],
             "published_age": info["published_age"],
         })
         if len(merged) >= max_results:
