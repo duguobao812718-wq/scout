@@ -857,6 +857,90 @@ async def research(
 
 @mcp.tool(
     annotations=ToolAnnotations(
+        title="Summarize with credibility assessment",
+        readOnlyHint=True, idempotentHint=False, openWorldHint=True,
+    ),
+)
+async def summarize(
+    question: str,
+    depth: int = 5,
+    engines: list[str] | None = None,
+    freshness: Literal["day", "week", "month", "year"] | None = None,
+    include_domains: list[str] | None = None,
+    exclude_domains: list[str] | None = None,
+    format: Format = "markdown",
+) -> str | dict[str, Any]:
+    """Search, fetch, extract key points, and assess credibility.
+
+    Best for:
+    - Questions needing trustworthy, multi-source answers.
+    - When you need a credibility score for the sources.
+    - Replacing research + manual summarization.
+
+    Not recommended for:
+    - You only need links -> use search.
+    - You only need one page -> use fetch.
+
+    Returns:
+    - markdown (default): structured summary with key points and credibility.
+    - json: {question, sources, key_points, credibility}.
+
+    Args:
+        question: What you want to know.
+        depth: How many sources to fetch (1-8). 5 is a good default.
+        engines: Override the engine set.
+        freshness: "day"|"week"|"month"|"year".
+        include_domains: Restrict to these domains.
+        exclude_domains: Exclude these domains.
+        format: "markdown" or "json".
+    """
+    from .summary import compute_credibility, extract_key_points, format_summary_for_agent
+
+    depth = max(1, min(depth, 8))
+
+    # 搜索
+    search_result = await _aggregate_search(
+        question, engines=engines, max_results=depth,
+        freshness=freshness, include_domains=include_domains,
+        exclude_domains=exclude_domains,
+    )
+
+    sources = search_result.get("results", [])
+
+    # 抓取页面
+    documents = []
+    if sources:
+        urls = [s["url"] for s in sources[:depth]]
+        fetch_results = await fetch_many(urls)
+        for result in fetch_results:
+            if not isinstance(result, Exception):
+                documents.append(result)
+
+    # 提取关键要点
+    all_key_points: dict[str, list[str]] = {}
+    for doc in documents:
+        title = doc.get("title", doc.get("url", ""))
+        points = extract_key_points(doc.get("content", ""))
+        if points:
+            all_key_points[title] = points
+
+    # 可信度评估
+    credibility = compute_credibility(sources)
+
+    if format == "json":
+        return {
+            "question": question,
+            "sources": sources,
+            "key_points": all_key_points,
+            "credibility": credibility,
+            "errors": search_result.get("errors", {}),
+        }
+
+    return format_summary_for_agent(question, sources, documents)
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
         title="Extract structured data from a URL",
         readOnlyHint=True,
         idempotentHint=True,
