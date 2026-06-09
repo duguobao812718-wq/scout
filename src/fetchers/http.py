@@ -22,7 +22,7 @@ from ..config import settings
 logger = logging.getLogger("scout.fetcher")
 
 # 需要浏览器指纹的引擎（绕过反爬检测）
-_BROWSER_ENGINES = {"duckduckgo", "brave", "google"}
+_BROWSER_ENGINES = {"duckduckgo", "brave", "google", "startpage", "ddg_news"}
 
 # 共享 aiohttp session（复用连接池）
 _session: aiohttp.ClientSession | None = None

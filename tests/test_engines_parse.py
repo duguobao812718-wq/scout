@@ -11,6 +11,10 @@ from src.engines.duckduckgo import DuckDuckGoEngine
 from src.engines.mojeek import MojeekEngine
 from src.engines.searxng import SearxNGEngine
 from src.engines.academic import SemanticScholarEngine, ArxivEngine
+from src.engines.wikipedia import WikipediaEngine
+from src.engines.startpage import StartpageEngine
+from src.engines.yandex import YandexEngine
+from src.engines.ddg_news import DuckDuckGoNewsEngine
 
 
 # ── Google 解析测试 ───────────────────────────────────────
@@ -438,3 +442,261 @@ class TestArxivParse:
         engine = ArxivEngine()
         results = engine.parse('<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>')
         assert results == []
+
+
+# ── Wikipedia 解析测试 ─────────────────────────────────────
+
+
+class TestWikipediaParse:
+    """Wikipedia JSON 解析测试。"""
+
+    WIKI_JSON = json.dumps({
+        "query": {
+            "search": [
+                {
+                    "title": "Python (programming language)",
+                    "pageid": 12345,
+                    "snippet": "Python is a <span class=\"searchmatch\">high-level</span> programming language.",
+                    "timestamp": "2023-06-01T00:00:00Z",
+                    "wordcount": 5000,
+                },
+                {
+                    "title": "Monty Python",
+                    "pageid": 67890,
+                    "snippet": "Monty Python is a <span class=\"searchmatch\">comedy</span> group.",
+                    "timestamp": "2023-05-01T00:00:00Z",
+                    "wordcount": 3000,
+                },
+            ],
+        },
+    })
+
+    def test_parse_results(self):
+        engine = WikipediaEngine()
+        results = engine.parse(self.WIKI_JSON)
+        assert len(results) == 2
+
+    def test_parse_titles_contain_wikipedia(self):
+        engine = WikipediaEngine()
+        results = engine.parse(self.WIKI_JSON)
+        assert "Wikipedia" in results[0].title
+
+    def test_parse_urls(self):
+        engine = WikipediaEngine()
+        results = engine.parse(self.WIKI_JSON)
+        assert "wikipedia.org/wiki/" in results[0].url
+
+    def test_parse_snippets_no_html(self):
+        engine = WikipediaEngine()
+        results = engine.parse(self.WIKI_JSON)
+        # HTML 标签应被清理
+        assert "<span" not in results[0].snippet
+        assert "high-level" in results[0].snippet
+
+    def test_empty_json(self):
+        engine = WikipediaEngine()
+        results = engine.parse('{"query": {"search": []}}')
+        assert results == []
+
+    def test_invalid_json(self):
+        engine = WikipediaEngine()
+        results = engine.parse("not json")
+        assert results == []
+
+    def test_build_url(self):
+        engine = WikipediaEngine()
+        url = engine.build_url("Python", 10)
+        assert "wikipedia.org/w/api.php" in url
+        assert "srsearch=Python" in url
+
+
+# ── Startpage 解析测试 ─────────────────────────────────────
+
+
+class TestStartpageParse:
+    """Startpage HTML 解析测试。"""
+
+    STARTPAGE_HTML = """
+    <html><body>
+    <div class="w-gl__result">
+        <h3 class="w-gl__result-title">
+            <a class="w-gl__result-url" href="https://www.python.org/">Python.org</a>
+        </h3>
+        <p class="w-gl__description">The official Python website.</p>
+    </div>
+    <div class="w-gl__result">
+        <h3 class="w-gl__result-title">
+            <a class="w-gl__result-url" href="https://docs.python.org/">Python Docs</a>
+        </h3>
+        <p class="w-gl__description">Python documentation.</p>
+    </div>
+    </body></html>
+    """
+
+    def test_parse_results(self):
+        engine = StartpageEngine()
+        results = engine.parse(self.STARTPAGE_HTML)
+        assert len(results) == 2
+
+    def test_parse_titles(self):
+        engine = StartpageEngine()
+        results = engine.parse(self.STARTPAGE_HTML)
+        assert results[0].title == "Python.org"
+        assert results[1].title == "Python Docs"
+
+    def test_parse_urls(self):
+        engine = StartpageEngine()
+        results = engine.parse(self.STARTPAGE_HTML)
+        assert results[0].url == "https://www.python.org/"
+
+    def test_parse_snippets(self):
+        engine = StartpageEngine()
+        results = engine.parse(self.STARTPAGE_HTML)
+        assert "official" in results[0].snippet
+
+    def test_empty_html(self):
+        engine = StartpageEngine()
+        results = engine.parse("<html><body></body></html>")
+        assert results == []
+
+    def test_build_url(self):
+        engine = StartpageEngine()
+        url = engine.build_url("Python", 10)
+        assert "startpage.com/sp/search" in url
+        assert "query=Python" in url
+
+
+# ── Yandex 解析测试 ────────────────────────────────────────
+
+
+class TestYandexParse:
+    """Yandex HTML 解析测试。"""
+
+    YANDEX_HTML = """
+    <html><body>
+    <div class="serp-item">
+        <h3><a href="https://www.python.org/">Python.org</a></h3>
+        <div class="OrganicTextContentSpan">The official Python website.</div>
+    </div>
+    <div class="serp-item">
+        <h3><a href="https://docs.python.org/">Python Docs</a></h3>
+        <div class="OrganicTextContentSpan">Python documentation.</div>
+    </div>
+    </body></html>
+    """
+
+    def test_parse_results(self):
+        engine = YandexEngine()
+        results = engine.parse(self.YANDEX_HTML)
+        assert len(results) == 2
+
+    def test_parse_titles(self):
+        engine = YandexEngine()
+        results = engine.parse(self.YANDEX_HTML)
+        assert results[0].title == "Python.org"
+
+    def test_parse_urls(self):
+        engine = YandexEngine()
+        results = engine.parse(self.YANDEX_HTML)
+        assert results[0].url == "https://www.python.org/"
+
+    def test_skip_yandex_internal(self):
+        engine = YandexEngine()
+        html = """
+        <html><body>
+        <div class="serp-item">
+            <h3><a href="https://yandex.ru/search">Yandex Search</a></h3>
+            <div class="OrganicTextContentSpan">Internal link</div>
+        </div>
+        <div class="serp-item">
+            <h3><a href="https://www.python.org/">Python</a></h3>
+            <div class="OrganicTextContentSpan">External link</div>
+        </div>
+        </body></html>
+        """
+        results = engine.parse(html)
+        assert len(results) == 1
+        assert "python.org" in results[0].url
+
+    def test_empty_html(self):
+        engine = YandexEngine()
+        results = engine.parse("<html><body></body></html>")
+        assert results == []
+
+    def test_build_url(self):
+        engine = YandexEngine()
+        url = engine.build_url("Python", 10)
+        assert "yandex.com/search" in url
+        assert "text=Python" in url
+
+
+# ── DuckDuckGo News 解析测试 ───────────────────────────────
+
+
+class TestDuckDuckGoNewsParse:
+    """DuckDuckGo News HTML 解析测试。"""
+
+    DDG_NEWS_HTML = """
+    <html><body>
+    <article class="result">
+        <a class="result__a" href="https://news.example.com/article1">Breaking News Title</a>
+        <span class="result__source">Example News</span>
+        <p class="result__snippet">This is a news snippet.</p>
+        <time>2 hours ago</time>
+    </article>
+    <article class="result">
+        <a class="result__a" href="https://news.example.com/article2">Another News</a>
+        <span class="result__source">Other Source</span>
+        <p class="result__snippet">Another news snippet.</p>
+    </article>
+    </body></html>
+    """
+
+    def test_parse_results(self):
+        engine = DuckDuckGoNewsEngine()
+        results = engine.parse(self.DDG_NEWS_HTML)
+        assert len(results) == 2
+
+    def test_parse_titles(self):
+        engine = DuckDuckGoNewsEngine()
+        results = engine.parse(self.DDG_NEWS_HTML)
+        assert results[0].title == "Breaking News Title"
+
+    def test_parse_source_in_snippet(self):
+        engine = DuckDuckGoNewsEngine()
+        results = engine.parse(self.DDG_NEWS_HTML)
+        assert "Example News" in results[0].snippet
+
+    def test_parse_date(self):
+        engine = DuckDuckGoNewsEngine()
+        results = engine.parse(self.DDG_NEWS_HTML)
+        assert "2 hours ago" in results[0].published_age
+
+    def test_skip_ddg_internal(self):
+        engine = DuckDuckGoNewsEngine()
+        html = """
+        <html><body>
+        <article class="result">
+            <a class="result__a" href="https://duckduckgo.com/about">DDG About</a>
+            <p class="result__snippet">Internal</p>
+        </article>
+        <article class="result">
+            <a class="result__a" href="https://news.example.com/real">Real News</a>
+            <p class="result__snippet">External</p>
+        </article>
+        </body></html>
+        """
+        results = engine.parse(html)
+        assert len(results) == 1
+        assert "example.com" in results[0].url
+
+    def test_empty_html(self):
+        engine = DuckDuckGoNewsEngine()
+        results = engine.parse("<html><body></body></html>")
+        assert results == []
+
+    def test_build_url(self):
+        engine = DuckDuckGoNewsEngine()
+        url = engine.build_url("Python", 10)
+        assert "duckduckgo.com" in url
+        assert "iar=news" in url

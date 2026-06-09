@@ -4,7 +4,7 @@
 
 ## ✨ 特性
 
-- 🔍 **多引擎搜索** — Bing、Brave、Google、DuckDuckGo、Mojeek、SearXNG、Semantic Scholar、arXiv
+- 🔍 **多引擎搜索** — Bing、Brave、Google、DuckDuckGo、Mojeek、SearXNG、Wikipedia、Startpage、Yandex、DuckDuckGo News、Semantic Scholar、arXiv
 - 🧠 **语义搜索** — Sentence Transformers + FAISS 意义匹配
 - 🖼️ **图片搜索** — SearXNG 图片分类搜索
 - 🌐 **网页抓取** — HTML 解析、curl_cffi 浏览器指纹
@@ -118,6 +118,10 @@ scout/
 │   │   ├── duckduckgo.py    # DuckDuckGo (curl_cffi)
 │   │   ├── mojeek.py        # Mojeek (独立索引)
 │   │   ├── searxng.py       # SearXNG (元搜索，多实例竞速)
+│   │   ├── wikipedia.py     # Wikipedia (REST API)
+│   │   ├── startpage.py     # Startpage (Google 隐私前端)
+│   │   ├── yandex.py        # Yandex (俄罗斯搜索引擎)
+│   │   ├── ddg_news.py      # DuckDuckGo News (新闻搜索)
 │   │   └── academic.py      # Semantic Scholar + arXiv (学术搜索)
 │   └── fetchers/
 │       ├── http.py          # HTTP 抓取（aiohttp + curl_cffi）
@@ -131,7 +135,7 @@ scout/
 
 - **语言：** Python 3.10+
 - **协议：** MCP (Model Context Protocol)
-- **搜索引擎：** Bing (RSS)、Brave、Google、DuckDuckGo、Mojeek、SearXNG、Semantic Scholar、arXiv
+- **搜索引擎：** Bing (RSS)、Brave、Google、DuckDuckGo、Mojeek、SearXNG、Wikipedia、Startpage、Yandex、DuckDuckGo News、Semantic Scholar、arXiv
 - **网页抓取：** aiohttp、curl_cffi、BeautifulSoup4
 - **缓存：** SQLite + FTS5
 - **语义搜索：** Sentence Transformers + FAISS
