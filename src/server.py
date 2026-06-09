@@ -233,7 +233,39 @@ async def _aggregate_search(
     if merged:
         await cache.put_search(cache_key, query, valid_engines, merged)
 
-    return {"query": query, "engines": valid_engines, "results": merged, "cached": False, "errors": errors}
+    # 收集搜索建议
+    all_related: list[str] = []
+    spell_correction: str | None = None
+    for name in valid_engines:
+        engine_diag = diagnostics.get(name, {})
+        related = engine_diag.get("related_searches", [])
+        all_related.extend(related)
+        if not spell_correction and engine_diag.get("spell_correction"):
+            spell_correction = engine_diag["spell_correction"]
+
+    # 去重相关搜索
+    seen = set()
+    unique_related = []
+    for term in all_related:
+        if term.lower() not in seen:
+            seen.add(term.lower())
+            unique_related.append(term)
+
+    # 查询改写建议
+    from .suggestions import rewrite_query
+    rewrites = rewrite_query(query)
+
+    payload = {"query": query, "engines": valid_engines, "results": merged, "cached": False, "errors": errors}
+
+    # 附加建议（如果有）
+    if unique_related:
+        payload["related_searches"] = unique_related[:10]
+    if spell_correction:
+        payload["spell_correction"] = spell_correction
+    if rewrites:
+        payload["query_suggestions"] = rewrites
+
+    return payload
 
 
 async def _refresh_search_cache(

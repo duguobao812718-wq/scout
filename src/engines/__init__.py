@@ -174,6 +174,18 @@ class Engine(abc.ABC):
             logger.warning("引擎 %s 解析失败: %s", self.name, e)
             return []
 
+        # 提取搜索建议（相关搜索 + 拼写纠错）
+        try:
+            from ..suggestions import extract_related_searches, extract_spell_correction
+            related = extract_related_searches(html, self.name)
+            correction = extract_spell_correction(html, self.name)
+            if related:
+                diag[self.name]["related_searches"] = related
+            if correction:
+                diag[self.name]["spell_correction"] = correction
+        except Exception:
+            pass  # 建议提取失败不影响搜索结果
+
         # 后过滤
         results = apply_post_filters(results, filters)
 

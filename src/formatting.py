@@ -124,6 +124,20 @@ def render_search(payload: dict[str, Any]) -> str:
     if meta_parts:
         lines.append(f"---\n_{' | '.join(meta_parts)}_")
 
+    # 添加搜索建议
+    if "spell_correction" in payload:
+        lines.append(f"\n💡 您是否要搜索: **{payload['spell_correction']}**")
+
+    if "related_searches" in payload:
+        lines.append("\n🔍 相关搜索:")
+        for term in payload["related_searches"][:5]:
+            lines.append(f"  - {term}")
+
+    if "query_suggestions" in payload:
+        lines.append("\n✏️ 查询优化建议:")
+        for suggestion in payload["query_suggestions"]:
+            lines.append(f"  - `{suggestion}`")
+
     return "\n".join(lines)
 
 
