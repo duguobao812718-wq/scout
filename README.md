@@ -61,6 +61,7 @@ SCOUT_LOG_LEVEL=INFO
 | `fetch` | 抓取单个 URL | url, format |
 | `engines` | 列出可用引擎 | - |
 | `research` | 搜索 + 抓取组合 | question, depth, format |
+| `read_doc` | 读取 PDF 文档 | source, start, length, format |
 | `extract_structured` | 提取结构化数据 | url, format |
 
 ## 💡 MCP 提示词
