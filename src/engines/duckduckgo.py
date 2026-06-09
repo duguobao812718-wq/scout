@@ -140,9 +140,16 @@ def _unwrap_ddg_url(url: str) -> str:
     if not url:
         return ""
 
-    # 处理相对 URL
+    # 处理相对 URL /l/?uddg=...
     if url.startswith("/l/"):
         parsed = urllib.parse.urlparse(f"https://duckduckgo.com{url}")
+        qs = urllib.parse.parse_qs(parsed.query)
+        if "uddg" in qs:
+            return qs["uddg"][0]
+
+    # 处理完整 URL https://duckduckgo.com/l/?uddg=...
+    if "duckduckgo.com/l/" in url:
+        parsed = urllib.parse.urlparse(url)
         qs = urllib.parse.parse_qs(parsed.query)
         if "uddg" in qs:
             return qs["uddg"][0]

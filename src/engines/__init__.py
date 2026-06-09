@@ -91,11 +91,12 @@ class Engine(abc.ABC):
         max_results: int = 10,
         filters: SearchFilters | None = None,
         diagnostics: dict[str, Any] | None = None,
+        max_retries: int = 2,
     ) -> list[SearchResult]:
         """完整搜索流程。
 
         1. build_url() 构建 URL
-        2. _fetch() 获取 HTML
+        2. _fetch() 获取 HTML（带重试）
         3. detect_gate() 检测封锁
         4. parse() 解析结果
         5. apply_post_filters() 后过滤
@@ -107,11 +108,23 @@ class Engine(abc.ABC):
         url = self.build_url(query, max_results, filters)
         diag.setdefault(self.name, {})["url"] = url
 
-        try:
-            html = await self._fetch(url)
-        except Exception as e:
-            diag[self.name]["error"] = str(e)
-            logger.warning("引擎 %s 抓取失败: %s", self.name, e)
+        # 带重试的抓取
+        html = None
+        for attempt in range(max_retries + 1):
+            try:
+                html = await self._fetch(url)
+                break
+            except Exception as e:
+                if attempt < max_retries:
+                    logger.warning("引擎 %s 抓取失败 (尝试 %d/%d): %s", self.name, attempt + 1, max_retries + 1, e)
+                    import asyncio
+                    await asyncio.sleep(1.0 * (attempt + 1))
+                else:
+                    diag[self.name]["error"] = str(e)
+                    logger.warning("引擎 %s 抓取失败: %s", self.name, e)
+                    return []
+
+        if html is None:
             return []
 
         # 门控检测
