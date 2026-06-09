@@ -13,9 +13,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-from typing import Any
 import urllib.parse
+from typing import Any
 
+from ..utils import normalize_url
 from . import (
     Engine,
     SearchFilters,
@@ -25,7 +26,6 @@ from . import (
     register_engine,
     text_of,
 )
-from ..utils import normalize_url
 
 logger = logging.getLogger("scout.engines.searxng")
 

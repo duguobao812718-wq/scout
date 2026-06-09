@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("scout.semantic")
@@ -68,7 +67,6 @@ class SemanticIndex:
         embedding = self._model.encode([text], normalize_embeddings=True)
 
         # 添加到索引
-        import faiss
         import numpy as np
         self._index.add(embedding.astype(np.float32))
 
@@ -100,7 +98,7 @@ class SemanticIndex:
 
         # 构建结果
         results = []
-        for score, idx in zip(scores[0], indices[0]):
+        for score, idx in zip(scores[0], indices[0], strict=False):
             if idx < len(self._documents):
                 doc = self._documents[idx].copy()
                 doc["score"] = float(score)
@@ -117,8 +115,9 @@ class SemanticIndex:
         if self._index is None:
             return
 
-        import faiss
         import json
+
+        import faiss
 
         # 保存 FAISS 索引
         faiss.write_index(self._index, f"{path}.faiss")
@@ -135,8 +134,9 @@ class SemanticIndex:
 
     def _load_sync(self, path: str) -> None:
         """同步加载索引。"""
-        import faiss
         import json
+
+        import faiss
 
         faiss_path = f"{path}.faiss"
         json_path = f"{path}.json"
@@ -145,7 +145,7 @@ class SemanticIndex:
         self._index = faiss.read_index(faiss_path)
 
         # 加载文档信息
-        with open(json_path, "r", encoding="utf-8") as f:
+        with open(json_path, encoding="utf-8") as f:
             self._documents = json.load(f)
 
         logger.info("语义索引已加载: %s（%d 个文档）", path, len(self._documents))

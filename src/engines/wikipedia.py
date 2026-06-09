@@ -83,7 +83,7 @@ class WikipediaEngine(Engine):
         for item in search_results:
             title = item.get("title", "")
             snippet = item.get("snippet", "")
-            page_id = item.get("pageid", "")
+            item.get("pageid", "")
 
             # 清理 HTML 标签（snippet 包含 <span class="searchmatch"> 标记）
             import re
@@ -106,8 +106,8 @@ class WikipediaEngine(Engine):
 
     async def _fetch(self, url: str) -> str:
         """使用 aiohttp 抓取 JSON API。"""
-        from ..fetchers.http import _fetch_with_aiohttp
         from ..config import settings
+        from ..fetchers.http import _fetch_with_aiohttp
 
         return await _fetch_with_aiohttp(url, settings.request_timeout, None)
 

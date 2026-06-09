@@ -3,9 +3,7 @@
 import asyncio
 import time
 
-import pytest
-
-from src.ratelimit import TokenBucket, RateLimiter
+from src.ratelimit import RateLimiter, TokenBucket
 
 
 def test_token_bucket_init():

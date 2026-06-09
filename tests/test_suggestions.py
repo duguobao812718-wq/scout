@@ -1,13 +1,11 @@
 """搜索建议模块测试。"""
 
-import pytest
 
 from src.suggestions import (
     extract_related_searches,
     extract_spell_correction,
     rewrite_query,
 )
-
 
 # ── 相关搜索提取测试 ──────────────────────────────────────
 

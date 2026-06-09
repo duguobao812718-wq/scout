@@ -1,6 +1,5 @@
 """缓存单元测试。"""
 
-import asyncio
 import os
 import tempfile
 

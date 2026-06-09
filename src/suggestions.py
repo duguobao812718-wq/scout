@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import unquote
 
 
 def extract_related_searches(html: str, engine: str = "") -> list[str]:
@@ -104,7 +104,7 @@ def _extract_google_related(html: str) -> list[str]:
         html,
         _re.IGNORECASE,
     )
-    for encoded_query, text in matches[:10]:
+    for encoded_query, _text in matches[:10]:
         decoded = unquote(encoded_query).replace("+", " ")
         if decoded and len(decoded) > 2:
             related.append(decoded)
@@ -159,7 +159,7 @@ def _extract_bing_related(html: str) -> list[str]:
         html,
         _re.IGNORECASE,
     )
-    for encoded_query, text in matches[:10]:
+    for encoded_query, _text in matches[:10]:
         decoded = unquote(encoded_query).replace("+", " ")
         if decoded and len(decoded) > 2:
             related.append(decoded)
@@ -221,7 +221,7 @@ def _extract_brave_related(html: str) -> list[str]:
             html,
             _re.IGNORECASE,
         )
-        for encoded_query, text in matches[:10]:
+        for encoded_query, _text in matches[:10]:
             decoded = unquote(encoded_query).replace("+", " ")
             if decoded and len(decoded) > 2:
                 related.append(decoded)
@@ -252,7 +252,7 @@ def _extract_ddg_related(html: str) -> list[str]:
             html,
             _re.IGNORECASE,
         )
-        for encoded_query, text in matches[:10]:
+        for encoded_query, _text in matches[:10]:
             decoded = unquote(encoded_query).replace("+", " ")
             if decoded and len(decoded) > 2:
                 related.append(decoded)

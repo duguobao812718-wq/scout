@@ -1,6 +1,5 @@
 """错误分类和错误提示测试。"""
 
-import pytest
 
 from src.engines import _classify_error
 from src.formatting import errors_to_hint

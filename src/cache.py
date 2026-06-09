@@ -326,7 +326,7 @@ class Cache:
         return await asyncio.to_thread(self._stats_sync)
 
 
-def create_cache() -> Cache | "RedisCache":
+def create_cache():
     """根据配置创建缓存实例。"""
     from .config import settings
 

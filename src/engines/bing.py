@@ -7,7 +7,6 @@ Bing 搜索引擎。
 
 from __future__ import annotations
 
-import re
 import urllib.parse
 import xml.etree.ElementTree as ET
 

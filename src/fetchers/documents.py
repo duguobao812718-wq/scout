@@ -129,8 +129,9 @@ async def read_pdf(
 
 def _extract_pdf_content(pdf_bytes: bytes, max_pages: int = 100) -> str:
     """从 PDF 字节中提取文本内容。"""
-    import pdfplumber
     import io
+
+    import pdfplumber
 
     content_parts = []
 
@@ -149,8 +150,9 @@ def _extract_pdf_content(pdf_bytes: bytes, max_pages: int = 100) -> str:
 
 def _extract_pdf_title(pdf_bytes: bytes) -> str:
     """从 PDF 元数据中提取标题。"""
-    import pdfplumber
     import io
+
+    import pdfplumber
 
     try:
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:

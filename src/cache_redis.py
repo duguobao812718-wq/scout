@@ -45,7 +45,7 @@ class RedisCache:
                 await self._redis.ping()
                 logger.info("Redis 缓存已连接: %s", self._redis_url)
             except ImportError:
-                raise ImportError("Redis 缓存需要安装: pip install redis[hiredis]")
+                raise ImportError("Redis 缓存需要安装: pip install redis[hiredis]") from None
             except Exception as e:
                 logger.error("Redis 连接失败: %s", e)
                 raise

@@ -1,6 +1,5 @@
 """RRF 合并算法单元测试。"""
 
-import pytest
 
 from src.engines import SearchResult
 from src.server import _merge_rrf

@@ -1,13 +1,11 @@
 """结果摘要模块测试。"""
 
-import pytest
 
 from src.summary import (
     compute_credibility,
     extract_key_points,
     format_summary_for_agent,
 )
-
 
 # ── 关键要点提取测试 ──────────────────────────────────────
 

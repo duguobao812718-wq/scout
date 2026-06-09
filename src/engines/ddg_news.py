@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import urllib.parse
 
+from ..utils import normalize_url
 from . import (
     Engine,
     SearchFilters,
@@ -18,7 +19,6 @@ from . import (
     register_engine,
     text_of,
 )
-from ..utils import normalize_url
 
 
 class DuckDuckGoNewsEngine(Engine):
@@ -135,8 +135,8 @@ class DuckDuckGoNewsEngine(Engine):
 
     async def _fetch(self, url: str) -> str:
         """使用 curl_cffi 抓取（DuckDuckGo 需要浏览器指纹）。"""
-        from ..fetchers.http import _fetch_with_curl_cffi
         from ..config import settings
+        from ..fetchers.http import _fetch_with_curl_cffi
 
         return await _fetch_with_curl_cffi(url, settings.request_timeout, None)
 

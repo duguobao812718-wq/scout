@@ -7,9 +7,9 @@ Brave 搜索引擎。
 
 from __future__ import annotations
 
-import re
 import urllib.parse
 
+from ..utils import normalize_url
 from . import (
     Engine,
     SearchFilters,
@@ -19,7 +19,6 @@ from . import (
     register_engine,
     text_of,
 )
-from ..utils import normalize_url
 
 
 class BraveEngine(Engine):

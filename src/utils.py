@@ -5,7 +5,6 @@ from __future__ import annotations
 import urllib.parse
 from urllib.parse import urlparse
 
-
 # 追踪参数集合（用于 URL 归一化）
 _TRACKING_PARAMS = frozenset({
     "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",

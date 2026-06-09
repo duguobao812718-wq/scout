@@ -2,20 +2,16 @@
 
 import json
 
-import pytest
-
-from src.engines.bing import BingEngine
+from src.engines.academic import ArxivEngine, SemanticScholarEngine
 from src.engines.brave import BraveEngine
-from src.engines.google import GoogleEngine
+from src.engines.ddg_news import DuckDuckGoNewsEngine
 from src.engines.duckduckgo import DuckDuckGoEngine
+from src.engines.google import GoogleEngine
 from src.engines.mojeek import MojeekEngine
 from src.engines.searxng import SearxNGEngine
-from src.engines.academic import SemanticScholarEngine, ArxivEngine
-from src.engines.wikipedia import WikipediaEngine
 from src.engines.startpage import StartpageEngine
+from src.engines.wikipedia import WikipediaEngine
 from src.engines.yandex import YandexEngine
-from src.engines.ddg_news import DuckDuckGoNewsEngine
-
 
 # ── Google 解析测试 ───────────────────────────────────────
 

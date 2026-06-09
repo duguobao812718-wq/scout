@@ -1,10 +1,10 @@
 """格式化单元测试。"""
 
 from src.formatting import (
-    estimate_tokens,
     errors_to_hint,
-    render_search,
+    estimate_tokens,
     render_fetch,
+    render_search,
     render_structured,
     smart_truncate,
 )

@@ -53,7 +53,7 @@ async def assert_url_allowed(url: str) -> None:
     try:
         addresses = await _resolve_hostname(hostname)
     except socket.gaierror as e:
-        raise UnsafeURLError(f"DNS 解析失败: {hostname} ({e})")
+        raise UnsafeURLError(f"DNS 解析失败: {hostname} ({e})") from e
 
     # 验证所有解析到的地址
     for addr in addresses:
@@ -82,7 +82,7 @@ def assert_ip_allowed(ip_str: str) -> None:
     try:
         ip = ipaddress.ip_address(ip_str)
     except ValueError:
-        raise UnsafeURLError(f"无效的 IP 地址: {ip_str}")
+        raise UnsafeURLError(f"无效的 IP 地址: {ip_str}") from None
 
     if _ip_is_blocked(ip):
         raise UnsafeURLError(f"IP 地址在禁止范围内: {ip_str}")
@@ -146,7 +146,7 @@ async def _resolve_hostname(hostname: str) -> list[str]:
             type=socket.SOCK_STREAM,
         )
         addresses = []
-        for family, _, _, _, sockaddr in infos:
+        for _family, _, _, _, sockaddr in infos:
             addr = sockaddr[0]
             if addr not in addresses:
                 addresses.append(addr)

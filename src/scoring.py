@@ -13,7 +13,6 @@ from __future__ import annotations
 import re
 from urllib.parse import urlparse
 
-
 # ── 域名信誉 ──────────────────────────────────────────────
 
 # 高质量域名白名单（加分）

@@ -1,6 +1,5 @@
 """结果评分模块测试。"""
 
-import pytest
 
 from src.scoring import (
     compute_quality_bonus,
@@ -9,7 +8,6 @@ from src.scoring import (
     multi_engine_score,
     page_quality_score,
 )
-
 
 # ── 域名信誉测试 ──────────────────────────────────────────
 

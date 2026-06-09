@@ -7,10 +7,7 @@ DuckDuckGo 搜索引擎。
 
 from __future__ import annotations
 
-import re
 import urllib.parse
-
-from bs4 import Tag
 
 from . import (
     Engine,

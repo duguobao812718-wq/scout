@@ -6,7 +6,6 @@ LLM 友好的输出格式，参考 free-search-mcp 的 formatting.py。
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 
@@ -152,10 +151,10 @@ def render_fetch(result: dict[str, Any]) -> str:
 
     lines = [
         f"# {title}",
-        f"",
+        "",
         f"> URL: <{url}>",
         f"> 方法: {method} | Token: ~{tokens}{' | ⚠ 已截断' if truncated else ''}",
-        f"",
+        "",
         content,
     ]
 
@@ -170,11 +169,11 @@ def render_research(payload: dict[str, Any]) -> str:
     tokens = payload.get("tokens_estimated", 0)
 
     lines = [
-        f"# 研究报告",
-        f"",
+        "# 研究报告",
+        "",
         f"> 问题: {question}",
         f"> 来源数: {len(sources)} | Token: ~{tokens}",
-        f"",
+        "",
     ]
 
     # 来源索引

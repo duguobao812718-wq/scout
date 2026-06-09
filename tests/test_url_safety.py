@@ -1,14 +1,14 @@
 """URL 安全模块单元测试。"""
 
+import ipaddress
+
 import pytest
 
 from src.url_safety import (
     UnsafeURLError,
-    assert_url_allowed,
-    assert_ip_allowed,
     _ip_is_blocked,
+    assert_ip_allowed,
 )
-import ipaddress
 
 
 def test_ip_is_blocked_private():

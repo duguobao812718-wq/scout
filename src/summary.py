@@ -163,7 +163,7 @@ def format_summary_for_agent(
 
     # 可信度评估
     credibility = compute_credibility(sources)
-    lines.append(f"## 可信度评估")
+    lines.append("## 可信度评估")
     lines.append(f"- 综合评分: **{credibility['score']:.2f}** ({credibility['level']})")
     factors = credibility["factors"]
     lines.append(f"- 来源数: {factors.get('source_count', 0)}")

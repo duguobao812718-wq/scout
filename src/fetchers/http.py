@@ -135,8 +135,9 @@ async def _fetch_with_curl_cffi(
     proxy: str | None,
 ) -> str:
     """使用 curl_cffi 抓取（浏览器指纹模拟，手动处理重定向防 SSRF 绕过）。"""
-    from ..url_safety import assert_url_allowed
     from curl_cffi.requests import AsyncSession
+
+    from ..url_safety import assert_url_allowed
 
     async with AsyncSession(impersonate="chrome") as session:
         current_url = url

@@ -6,12 +6,8 @@ Scout MCP 服务器入口。
 """
 
 import asyncio
-import hashlib
-import json
 import logging
-import time
 from typing import Any, Literal
-import urllib.parse
 from urllib.parse import urlparse
 
 from mcp.server.fastmcp import Context, FastMCP
@@ -19,15 +15,14 @@ from mcp.types import ToolAnnotations
 
 from .cache import cache
 from .config import settings
-from .engines import SearchFilters, SearchResult, get_engine, list_engines as _list_engines
+from .engines import SearchFilters, SearchResult, get_engine
+from .engines import list_engines as _list_engines
 from .fetchers.http import fetch_many, fetch_page
 from .formatting import (
     errors_to_hint,
-    estimate_tokens,
     render_fetch,
     render_research,
     render_search,
-    smart_truncate,
 )
 from .ratelimit import get_limiter
 from .scoring import compute_quality_bonus
@@ -530,7 +525,7 @@ async def fetch_batch(
 
     if errors:
         lines.append("# 抓取失败")
-        for key, msg in errors.items():
+        for _key, msg in errors.items():
             lines.append(f"- {msg}")
         lines.append("")
 
@@ -970,8 +965,8 @@ async def extract_structured(
         url: Absolute http(s) URL.
         format: "markdown" (default) or "json".
     """
-    from .structured import extract_structured as _extract
     from .formatting import render_structured
+    from .structured import extract_structured as _extract
 
     payload = await _extract(url)
     return _maybe_render(payload, format, render_structured)
@@ -1051,7 +1046,6 @@ async def resource_cache_stats() -> dict[str, Any]:
 )
 async def resource_cached_page(url: str) -> str:
     """从缓存读取已抓取的页面内容。"""
-    from .config import settings
 
     page, is_stale = await cache.get_page(url)
     if page is None:

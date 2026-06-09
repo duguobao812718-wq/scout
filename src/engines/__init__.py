@@ -14,7 +14,6 @@ import logging
 import re
 import urllib.parse
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
 from bs4 import BeautifulSoup, Tag
@@ -117,8 +116,6 @@ class Engine(abc.ABC):
         - error: 错误描述
         - gate: 门控类型（captcha / consent / login）
         """
-        from ..errors import SearchEngineError
-
         filters = filters or SearchFilters()
         diag = diagnostics or {}
 
@@ -444,8 +441,19 @@ def list_engines() -> list[str]:
 
 def _register_builtin_engines() -> None:
     """注册内置引擎（延迟导入避免循环依赖）。"""
-    from . import duckduckgo, bing, brave, google, mojeek, searxng, academic  # noqa: F401
-    from . import wikipedia, startpage, yandex, ddg_news  # noqa: F401
+    from . import (  # noqa: F401  # noqa: F401
+        academic,
+        bing,
+        brave,
+        ddg_news,
+        duckduckgo,
+        google,
+        mojeek,
+        searxng,
+        startpage,
+        wikipedia,
+        yandex,
+    )
 
     # 引擎在各自的模块中通过 register_engine() 自注册
 
