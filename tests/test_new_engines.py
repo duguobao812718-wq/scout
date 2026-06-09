@@ -419,6 +419,98 @@ class TestMultimodalEngines:
         assert len(results) == 0
 
 
+class TestMapEngine:
+    """地图引擎测试。"""
+
+    def test_openstreetmap_engine_registered(self):
+        """OpenStreetMap 引擎已注册。"""
+        engine = get_engine("openstreetmap")
+        assert engine.name == "openstreetmap"
+
+    def test_openstreetmap_build_url(self):
+        """OpenStreetMap URL 构建。"""
+        engine = get_engine("openstreetmap")
+        url = engine.build_url("北京大学", 10)
+        assert "q=" in url
+        assert "nominatim.openstreetmap.org" in url
+        assert "format=jsonv2" in url
+
+    def test_openstreetmap_parse_results(self):
+        """OpenStreetMap 解析搜索结果。"""
+        engine = get_engine("openstreetmap")
+        data = json.dumps([
+            {
+                "place_id": 123456,
+                "name": "北京大学",
+                "display_name": "北京大学, 海淀区, 北京市, 中国",
+                "type": "university",
+                "osm_id": 789,
+                "lat": "39.9925",
+                "lon": "116.3062",
+                "category": "amenity",
+                "importance": 0.9,
+                "address": {
+                    "city": "北京市",
+                    "state": "北京市",
+                    "country": "中国",
+                },
+                "extratags": {
+                    "website": "https://www.pku.edu.cn",
+                    "wikipedia": "zh:北京大学",
+                },
+                "namedetails": {},
+            }
+        ])
+        results = engine.parse(data)
+        assert len(results) == 1
+        assert "北京大学" in results[0].title
+        assert "openstreetmap.org" in results[0].url
+        assert "39.9925" in results[0].snippet
+
+    def test_openstreetmap_parse_poi(self):
+        """OpenStreetMap 解析 POI 结果。"""
+        engine = get_engine("openstreetmap")
+        data = json.dumps([
+            {
+                "place_id": 789,
+                "name": "星巴克",
+                "display_name": "星巴克, 王府井大街, 东城区, 北京市",
+                "type": "cafe",
+                "osm_id": 456,
+                "lat": "39.9142",
+                "lon": "116.4074",
+                "category": "amenity",
+                "importance": 0.5,
+                "address": {
+                    "city": "北京市",
+                    "state": "北京市",
+                    "country": "中国",
+                },
+                "extratags": {
+                    "opening_hours": "Mo-Su 07:00-22:00",
+                    "phone": "+86 10 12345678",
+                },
+                "namedetails": {},
+            }
+        ])
+        results = engine.parse(data)
+        assert len(results) == 1
+        assert "星巴克" in results[0].title
+        assert "07:00-22:00" in results[0].snippet
+
+    def test_openstreetmap_parse_empty(self):
+        """OpenStreetMap 解析空响应。"""
+        engine = get_engine("openstreetmap")
+        results = engine.parse("[]")
+        assert len(results) == 0
+
+    def test_openstreetmap_parse_invalid_json(self):
+        """OpenStreetMap 解析无效 JSON。"""
+        engine = get_engine("openstreetmap")
+        results = engine.parse("invalid json")
+        assert len(results) == 0
+
+
 class TestEngineList:
     """引擎列表测试。"""
 
@@ -428,9 +520,9 @@ class TestEngineList:
         expected = [
             "arxiv", "bilibili", "bing", "brave", "ddg_news", "duckduckgo",
             "github", "google", "google_scholar", "hackernews", "huggingface",
-            "mojeek", "npm", "podcast", "pypi", "reddit", "searxng",
-            "semantic_scholar", "stackoverflow", "startpage", "twitter",
-            "unsplash", "wikipedia", "yandex", "youtube",
+            "mojeek", "npm", "openstreetmap", "podcast", "pypi", "reddit",
+            "searxng", "semantic_scholar", "stackoverflow", "startpage",
+            "twitter", "unsplash", "wikipedia", "yandex", "youtube",
         ]
         for engine_name in expected:
             assert engine_name in engines, f"引擎 {engine_name} 未注册"
@@ -438,4 +530,4 @@ class TestEngineList:
     def test_engine_count(self):
         """引擎数量正确。"""
         engines = list_engines()
-        assert len(engines) == 26  # 22 + 新增 4 个多模态引擎
+        assert len(engines) == 27  # 26 + 1 地图引擎

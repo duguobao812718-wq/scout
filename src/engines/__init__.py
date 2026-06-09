@@ -507,6 +507,7 @@ def _register_builtin_engines() -> None:
         huggingface,
         mojeek,
         npm,
+        openstreetmap,
         podcast,
         pubmed,
         pypi,
