@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "scout"
+version = "0.1.0"
+description = "AI Agent 全能搜索工具 — 完全免费，多引擎，完美适配 AI Agent"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0",
+    "beautifulsoup4>=4.12.0",
+    "pdfplumber>=0.10.0",
+    "aiohttp>=3.9.0",
+    "lxml>=5.0.0",
+    "pydantic-settings>=2.0.0",
+    "trafilatura>=1.6.0",
+]
+
+[project.optional-dependencies]
+semantic = [
+    "sentence-transformers>=2.2.0",
+    "faiss-cpu>=1.7.0",
+]
+playwright = [
+    "playwright>=1.40.0",
+]
+all = [
+    "scout[semantic,playwright]",
+]
+
+[project.scripts]
+scout = "src.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
