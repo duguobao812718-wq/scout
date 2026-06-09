@@ -46,6 +46,19 @@ pip install -e .[all]
 SCOUT_PROXY=http://127.0.0.1:7897
 ```
 
+### 可选：使用 Redis 缓存（多实例共享）
+
+```bash
+pip install -e .[redis]
+```
+
+在 `.env` 中配置：
+
+```env
+SCOUT_CACHE_BACKEND=redis
+SCOUT_REDIS_URL=redis://localhost:6379/0
+```
+
 ### 可选：配置 Claude Desktop
 
 在 Claude Desktop 的配置文件中添加：

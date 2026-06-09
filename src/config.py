@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     # ── 缓存 ──────────────────────────────────────────────
     cache_dir: Path = Path.home() / ".cache" / "scout"
     cache_ttl_seconds: int = 60 * 60 * 24 * 7  # 7 天
+    cache_backend: str = "sqlite"  # "sqlite" 或 "redis"
+    redis_url: str = "redis://localhost:6379/0"
 
     # ── 引擎 ──────────────────────────────────────────────
     default_engines: list[str] = ["duckduckgo", "bing"]

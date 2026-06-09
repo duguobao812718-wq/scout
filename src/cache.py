@@ -326,5 +326,26 @@ class Cache:
         return await asyncio.to_thread(self._stats_sync)
 
 
+def create_cache() -> Cache | "RedisCache":
+    """根据配置创建缓存实例。"""
+    from .config import settings
+
+    if settings.cache_backend == "redis":
+        from .cache_redis import RedisCache
+        logger.info("使用 Redis 缓存后端: %s", settings.redis_url)
+        return RedisCache()
+    else:
+        logger.info("使用 SQLite 缓存后端")
+        return Cache()
+
+
 # 全局缓存实例
-cache = Cache()
+cache = create_cache()
+
+
+# 类型别名，便于类型检查
+try:
+    from .cache_redis import RedisCache as _RedisCache
+    CacheType = Cache | _RedisCache
+except ImportError:
+    CacheType = Cache
