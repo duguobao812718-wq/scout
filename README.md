@@ -16,42 +16,50 @@
 
 ## 🚀 快速开始
 
-### 安装
+### 安装（3 步搞定）
 
 ```bash
-# 基础安装
+# 1. 克隆仓库
+git clone https://github.com/duguobao812718-wq/scout.git
+cd scout
+
+# 2. 安装依赖
 pip install -e .
 
-# 安装所有可选依赖（语义搜索、浏览器）
+# 3. 注册到 Claude Code
+claude mcp add -s user scout -- python -m src
+```
+
+安装完成后重启 Claude Code，即可使用 `search`、`fetch`、`research` 等 11 个工具。
+
+### 可选：安装语义搜索
+
+```bash
 pip install -e .[all]
 ```
 
-### 注册为 MCP 服务器
+### 可选：配置代理（国内用户）
 
-```bash
-# 注册到 Claude Code
-claude mcp add -s user scout -- python -m src
-
-# 测试
-echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | python -m src
-```
-
-### 配置
-
-创建 `.env` 文件：
+在项目目录下创建 `.env` 文件：
 
 ```env
-# 代理配置（可选）
 SCOUT_PROXY=http://127.0.0.1:7897
+```
 
-# 搜索引擎
-SCOUT_DEFAULT_ENGINES=bing,brave
+### 可选：配置 Claude Desktop
 
-# 缓存（7 天）
-SCOUT_CACHE_TTL_SECONDS=604800
+在 Claude Desktop 的配置文件中添加：
 
-# 日志
-SCOUT_LOG_LEVEL=INFO
+```json
+{
+  "mcpServers": {
+    "scout": {
+      "command": "python",
+      "args": ["-m", "src"],
+      "cwd": "/path/to/scout"
+    }
+  }
+}
 ```
 
 ## 🛠️ MCP 工具
