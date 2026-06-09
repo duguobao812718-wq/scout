@@ -250,3 +250,26 @@ def render_structured(payload: dict[str, Any]) -> str:
         lines.append("_未找到结构化数据_")
 
     return "\n".join(lines)
+
+
+def render_doc(payload: dict[str, Any]) -> str:
+    """渲染文档为 Markdown。"""
+    url = payload.get("url", "")
+    title = payload.get("title", "(无标题)")
+    content = payload.get("content", "")
+    fmt = payload.get("format", "unknown")
+    total_chars = payload.get("total_chars", 0)
+    returned_chars = payload.get("returned_chars", 0)
+    truncated = payload.get("truncated", False)
+
+    lines = [
+        f"# {title}",
+        "",
+        f"> URL: <{url}>",
+        f"> 格式: {fmt} | 总字符: {total_chars} | 返回: {returned_chars}",
+        f"> {'⚠ 已截断' if truncated else '✓ 完整'}",
+        "",
+        content,
+    ]
+
+    return "\n".join(lines)

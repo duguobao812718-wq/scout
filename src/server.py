@@ -479,6 +479,50 @@ async def extract_structured(
     return _maybe_render(payload, format, render_structured)
 
 
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Read a remote document",
+        readOnlyHint=True,
+        idempotentHint=True,
+        openWorldHint=True,
+    ),
+)
+async def read_doc(
+    source: str,
+    start: int = 0,
+    length: int | None = None,
+    format: Format = "markdown",
+) -> str | dict[str, Any]:
+    """Read an http(s) document (PDF) into Markdown.
+
+    Best for:
+    - Remote PDFs from an http(s) URL.
+    - Paginating through a long document via `start` / `length`.
+
+    Not recommended for:
+    - Arbitrary HTML web pages -> `fetch` does reader-mode cleanup.
+    - Pages discovered through search -> `fetch` or `research`.
+
+    Returns:
+    - markdown (default): rendered document text with a small header.
+    - json: {content, title, format, total_chars, start, returned_chars, truncated}.
+
+    Args:
+        source: http(s) URL.
+        start: Character offset to begin reading from. Default 0.
+        length: Max characters to return; None = read to end.
+        format: "markdown" or "json".
+    """
+    from .fetchers.documents import read_pdf
+    from .formatting import render_doc
+
+    if start < 0:
+        raise ValueError(f"start must be >= 0, got {start}")
+
+    payload = await read_pdf(source, start=start, length=length)
+    return _maybe_render(payload, format, render_doc)
+
+
 # ── 提示词 ────────────────────────────────────────────────
 
 
