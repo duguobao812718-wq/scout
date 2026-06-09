@@ -891,6 +891,71 @@ async def read_doc(
     return _maybe_render(payload, format, render_doc)
 
 
+# ── MCP 资源 ────────────────────────────────────────────────
+
+
+@mcp.resource(
+    "cache://stats",
+    name="cache_stats",
+    title="Cache statistics",
+    description="Current cache entry counts and configuration.",
+    mime_type="application/json",
+)
+async def resource_cache_stats() -> dict[str, Any]:
+    """返回缓存统计信息。"""
+    stats = await cache.stats()
+    from .config import settings
+    return {
+        **stats,
+        "cache_ttl_seconds": settings.cache_ttl_seconds,
+        "cache_dir": str(settings.cache_dir),
+    }
+
+
+@mcp.resource(
+    "cache://page/{url}",
+    name="cached_page",
+    title="Cached page content",
+    description="Read a previously fetched page from the local cache.",
+    mime_type="text/markdown",
+)
+async def resource_cached_page(url: str) -> str:
+    """从缓存读取已抓取的页面内容。"""
+    from .config import settings
+
+    page, is_stale = await cache.get_page(url)
+    if page is None:
+        return f"_页面未缓存: {url}_\n\n请先使用 `fetch` 工具抓取此页面。"
+
+    title = page.get("title", "(无标题)")
+    content = page.get("content", "")
+    stale_mark = " ⚠️ 已过期" if is_stale else ""
+
+    return f"# {title}{stale_mark}\n\n> URL: <{url}>\n\n{content}"
+
+
+@mcp.resource(
+    "engines://list",
+    name="engines_list",
+    title="Available search engines",
+    description="List of all registered search engines with their capabilities.",
+    mime_type="application/json",
+)
+async def resource_engines_list() -> list[dict[str, Any]]:
+    """返回所有可用引擎及其能力。"""
+    from .engines import ENGINES
+
+    return [
+        {
+            "name": engine.name,
+            "needs_browser": engine.needs_browser,
+            "supports_freshness": engine.supports_freshness,
+            "supports_safesearch": engine.supports_safesearch,
+        }
+        for engine in ENGINES.values()
+    ]
+
+
 # ── 提示词 ────────────────────────────────────────────────
 
 
