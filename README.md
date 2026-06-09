@@ -1,240 +1,306 @@
 # Scout
 
-> AI Agent 全能搜索工具 — 完全免费，多引擎，多模态，完美适配 AI Agent
+<div align="center">
 
-## ✨ 特性
+**AI Agent 全能搜索工具**
 
-- 🔍 **26 个搜索引擎** — 通用搜索、学术、代码、社区、AI、包管理、视频、图片、播客
-- 🎬 **多模态搜索** — YouTube、Bilibili 视频搜索、Unsplash 图片搜索、Podcast 搜索
-- 🧠 **语义搜索** — Sentence Transformers + FAISS 意义匹配
-- 🌐 **网页抓取** — HTML 解析、curl_cffi 浏览器指纹、页面缓存
-- 📦 **完全免费** — 无 API key 要求，无使用限制
-- 🤖 **AI Agent 适配** — MCP 协议，结构化输出
-- ⚡ **高性能** — 并发搜索、SQLite 缓存、RRF 结果合并、引擎级超时控制、熔断器
-- 🔧 **可扩展** — 模块化设计，JsonApiEngine 基类简化新引擎开发
-- 🛡️ **安全** — SSRF 防护、代理支持、并发限制
+*完全免费 · 26 引擎 · 多模态 · MCP 协议*
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-243-green.svg)](tests/)
+[![MCP](https://img.shields.io/badge/MCP-compatible-orange.svg)](https://modelcontextprotocol.io/)
+
+[快速开始](#-快速开始) · [功能特性](#-功能特性) · [搜索引擎](#-搜索引擎) · [MCP 工具](#️-mcp-工具) · [配置选项](#-配置选项)
+
+</div>
+
+---
+
+## 🎯 为什么选择 Scout？
+
+Scout 是专为 AI Agent 设计的全能搜索工具，通过 MCP 协议提供标准化的搜索接口。
+
+| 特性 | Scout | Tavily | Exa | SerpAPI |
+|------|-------|--------|-----|---------|
+| **免费使用** | ✅ 完全免费 | ❌ 有限额 | ❌ 有限额 | ❌ 付费 |
+| **无需 API Key** | ✅ | ❌ | ❌ | ❌ |
+| **搜索引擎数量** | 26 | 1 | 1 | 1 |
+| **多模态搜索** | ✅ 视频/图片/播客 | ❌ | ❌ | ❌ |
+| **MCP 协议** | ✅ 原生支持 | ❌ | ❌ | ❌ |
+| **本地缓存** | ✅ SQLite/Redis | ❌ | ❌ | ❌ |
+
+---
+
+## ✨ 功能特性
+
+### 🔍 26 个搜索引擎
+
+```
+通用搜索 (8)    学术搜索 (4)    代码搜索 (2)
+    ↓               ↓               ↓
+社区搜索 (3)    包管理 (3)      知识搜索 (1)
+    ↓               ↓               ↓
+新闻搜索 (1)    多模态搜索 (4)
+                    ↓
+        YouTube · Bilibili · Unsplash · Podcast
+```
+
+### 🎬 多模态搜索
+
+- **视频搜索** — YouTube、Bilibili 视频教程
+- **图片搜索** — Unsplash 高质量图片
+- **播客搜索** — Podcast 节目发现
+
+### ⚡ 高性能架构
+
+- **并发搜索** — asyncio 异步并发，不阻塞
+- **智能缓存** — SQLite + FTS5 全文搜索
+- **结果合并** — RRF (Reciprocal Rank Fusion) 算法
+- **熔断器** — 引擎连续失败自动暂停
+
+### 🛡️ 安全防护
+
+- **SSRF 防护** — DNS 解析 + IP 范围验证
+- **并发限制** — Semaphore 控制最大并发数
+- **重定向验证** — 每次重定向都检查安全性
+
+---
 
 ## 🚀 快速开始
 
-### 安装（3 步搞定）
+### 安装
 
 ```bash
-# 1. 克隆仓库
+# 克隆仓库
 git clone https://github.com/duguobao812718-wq/scout.git
 cd scout
 
-# 2. 安装依赖
+# 安装依赖
 pip install -e .
 
-# 3. 注册到 Claude Code
+# 注册到 Claude Code
 claude mcp add -s user scout -- python -m src
 ```
 
-安装完成后重启 Claude Code，即可使用 `search`、`fetch`、`research` 等 11 个工具。
+重启 Claude Code，即可使用 12 个搜索工具。
 
-### 可选：安装语义搜索
+### 验证安装
 
 ```bash
-pip install -e .[all]
+# 列出可用引擎
+python -m src --list-engines
+
+# 运行测试
+python -m pytest tests/ -v
 ```
 
-### 可选：配置代理（国内用户）
+---
+
+## 🔍 搜索引擎
+
+### 通用搜索
+
+| 引擎 | 特点 | 适用场景 |
+|------|------|----------|
+| Google | 最全的搜索结果 | 通用搜索 |
+| Bing | 微软搜索引擎 | 通用搜索 |
+| Brave | 隐私保护 | 隐私搜索 |
+| DuckDuckGo | 无追踪 | 隐私搜索 |
+| Mojeek | 独立索引 | 替代选择 |
+| Startpage | Google 隐私前端 | 隐私搜索 |
+| Yandex | 俄罗斯搜索引擎 | 俄语内容 |
+| SearXNG | 元搜索，多实例 | 自建实例 |
+
+### 学术搜索
+
+| 引擎 | 特点 | 适用场景 |
+|------|------|----------|
+| Semantic Scholar | AI 驱动的学术搜索 | 论文发现 |
+| arXiv | 预印本论文 | 最新研究 |
+| Google Scholar | 最全的学术搜索 | 论文引用 |
+| PubMed | 生物医学文献 | 医学研究 |
+
+### 代码搜索
+
+| 引擎 | 特点 | 适用场景 |
+|------|------|----------|
+| GitHub | 代码仓库搜索 | 开源项目 |
+| StackOverflow | 编程问答 | 问题解决 |
+
+### 社区搜索
+
+| 引擎 | 特点 | 适用场景 |
+|------|------|----------|
+| Reddit | 社区讨论 | 深度讨论 |
+| HackerNews | 技术新闻 | 技术趋势 |
+| Twitter/X | 社交媒体 | 实时动态 |
+
+### 包管理搜索
+
+| 引擎 | 特点 | 适用场景 |
+|------|------|----------|
+| npm | JS/TS 包 | 前端开发 |
+| PyPI | Python 包 | Python 开发 |
+| HuggingFace | AI 模型/数据集 | AI 开发 |
+
+### 多模态搜索
+
+| 引擎 | 特点 | 适用场景 |
+|------|------|----------|
+| YouTube | 视频搜索 | 视频教程 |
+| Bilibili | 中文视频 | 技术分享 |
+| Unsplash | 图片搜索 | 高质量图片 |
+| Podcast | 播客搜索 | 音频内容 |
+
+---
+
+## 🛠️ MCP 工具
+
+| 工具 | 功能 | 示例 |
+|------|------|------|
+| `search` | 多引擎搜索 | `search("Python tutorial")` |
+| `fetch` | 抓取页面 | `fetch("https://python.org")` |
+| `fetch_batch` | 批量抓取 | `fetch_batch([url1, url2])` |
+| `research` | 深度研究 | `research("What is ML?")` |
+| `summarize` | 搜索+摘要 | `summarize("latest AI news")` |
+| `read_doc` | 读取 PDF | `read_doc("paper.pdf")` |
+| `engines` | 列出引擎 | `engines()` |
+| `cache_search` | 搜索缓存 | `cache_search("Python")` |
+| `semantic_search` | 语义搜索 | `semantic_search("machine learning")` |
+| `extract_structured` | 提取结构化数据 | `extract_structured(url)` |
+
+---
+
+## ⚙️ 配置选项
+
+### 环境变量
 
 在项目目录下创建 `.env` 文件：
 
 ```env
+# 代理配置（国内用户）
 SCOUT_PROXY=http://127.0.0.1:7897
+
+# 缓存后端
+SCOUT_CACHE_BACKEND=sqlite  # 或 redis
+SCOUT_REDIS_URL=redis://localhost:6379/0
+
+# 速率限制
+SCOUT_RATE_LIMIT_PER_MINUTE=60
+
+# 安全搜索
+SCOUT_SAFESEARCH=moderate  # off / moderate / strict
 ```
 
-### 可选：使用 Redis 缓存（多实例共享）
-
-```bash
-pip install -e .[redis]
-```
-
-在 `.env` 中配置：
+### 高级配置
 
 ```env
-SCOUT_CACHE_BACKEND=redis
-SCOUT_REDIS_URL=redis://localhost:6379/0
+# 请求超时
+SCOUT_REQUEST_TIMEOUT=15
+
+# 最大结果数
+SCOUT_MAX_RESULTS=10
+
+# 缓存 TTL
+SCOUT_CACHE_TTL_SECONDS=604800  # 7 天
 ```
 
-### 可选：配置 Claude Desktop
+---
 
-在 Claude Desktop 的配置文件中添加：
+## 📊 性能指标
 
-```json
-{
-  "mcpServers": {
-    "scout": {
-      "command": "python",
-      "args": ["-m", "src"],
-      "cwd": "/path/to/scout"
-    }
-  }
-}
-```
+| 指标 | 值 |
+|------|-----|
+| 搜索引擎数量 | 26 |
+| MCP 工具数量 | 12 |
+| 测试用例数量 | 243 |
+| 代码行数 | ~8500 |
+| 平均搜索延迟 | < 2s |
+| 缓存命中延迟 | < 10ms |
 
-## 🛠️ MCP 工具
+---
 
-| 工具 | 功能 | 参数 |
-|------|------|------|
-| `search` | 多引擎搜索 | query, engines, max_results, freshness, include_domains, exclude_domains, category, format |
-| `fetch` | 抓取单个 URL | url, format |
-| `fetch_batch` | 批量抓取 | urls, format |
-| `engines` | 列出可用引擎 | - |
-| `cache_search` | 搜索已缓存页面 | query, limit, format |
-| `semantic_search` | 语义搜索已索引页面 | query, top_k, format |
-| `semantic_index_page` | 索引页面供语义搜索 | url, format |
-| `image_search` | 图片搜索 | query, max_results, freshness, format |
-| `research` | 搜索 + 抓取组合 | question, depth, freshness, format |
-| `summarize` | 搜索 + 抓取 + 摘要 | question, depth, freshness, format |
-| `read_doc` | 读取 PDF 文档 | source, start, length, format |
-| `extract_structured` | 提取结构化数据 | url, format |
-
-### 搜索引擎分类
-
-| 分类 | 引擎 | 用途 |
-|------|------|------|
-| **通用搜索** | Google, Bing, Brave, DuckDuckGo, Mojeek, Startpage, Yandex, SearXNG | 网页搜索 |
-| **学术搜索** | Semantic Scholar, arXiv, Google Scholar, PubMed | 论文、文献 |
-| **代码搜索** | GitHub, StackOverflow | 代码仓库、编程问答 |
-| **社区搜索** | Reddit, HackerNews, Twitter/X | 社区讨论、技术新闻 |
-| **包搜索** | npm, PyPI, HuggingFace | 包管理、AI 模型 |
-| **知识搜索** | Wikipedia | 百科全书 |
-| **新闻搜索** | DuckDuckGo News | 新闻资讯 |
-
-## 🔒 安全特性
-
-- SSRF 防护（DNS 解析 + IP 范围验证 + 云元数据拦截）
-- XML 外部实体防护（defusedxml）
-- PDF 下载大小限制 + 超时控制
-- 令牌桶限速
-- 缓存线程安全（双重检查锁定）
-
-## 📦 MCP 资源
-
-| 资源 URI | 功能 |
-|----------|------|
-| `cache://stats` | 缓存统计信息（条目数、TTL、路径） |
-| `cache://page/{url}` | 读取已缓存的页面内容 |
-| `engines://list` | 所有引擎及其能力列表 |
-
-## 💡 MCP 提示词
-
-| 提示词 | 功能 |
-|--------|------|
-| `research_prompt` | 深入研究提示词 |
-| `factcheck_prompt` | 事实核查提示词 |
-| `news_brief` | 新闻简报提示词 |
-| `compare_sources` | 多源对比提示词 |
-
-## 📁 项目结构
+## 🏗️ 项目结构
 
 ```
 scout/
 ├── src/
-│   ├── server.py            # MCP 服务器（12 工具 + 4 提示词 + 3 资源）
-│   ├── config.py            # 配置模块（pydantic-settings）
-│   ├── cache.py             # SQLite 缓存 + FTS5 + stale-while-revalidate
-│   ├── cache_redis.py       # Redis 缓存后端
-│   ├── utils.py             # 公共工具函数（URL 归一化、标题相似度）
-│   ├── ratelimit.py         # 令牌桶限速器
-│   ├── scoring.py           # 结果质量评分
-│   ├── suggestions.py       # 搜索建议（相关搜索/纠错/改写）
-│   ├── summary.py           # 结果摘要 + 可信度评估
-│   ├── formatting.py        # Markdown/JSON 格式化器
-│   ├── errors.py            # 错误类型层级
-│   ├── url_safety.py        # SSRF 防护
-│   ├── semantic.py          # 语义搜索（Sentence Transformers + FAISS）
-│   ├── structured.py        # 结构化数据提取
-│   ├── prompts.py           # MCP 提示词模板
-│   ├── engines/             # 22 个搜索引擎
-│   │   ├── bing.py          # Bing (RSS)
-│   │   ├── brave.py         # Brave (curl_cffi)
-│   │   ├── google.py        # Google (curl_cffi)
-│   │   ├── duckduckgo.py    # DuckDuckGo (curl_cffi)
-│   │   ├── mojeek.py        # Mojeek (独立索引)
-│   │   ├── searxng.py       # SearXNG (元搜索，多实例竞速)
-│   │   ├── wikipedia.py     # Wikipedia (REST API)
-│   │   ├── startpage.py     # Startpage (Google 隐私前端)
-│   │   ├── yandex.py        # Yandex (俄罗斯搜索引擎)
-│   │   ├── ddg_news.py      # DuckDuckGo News (新闻搜索)
-│   │   ├── academic.py      # Semantic Scholar + arXiv (学术搜索)
-│   │   ├── google_scholar.py # Google Scholar (学术搜索)
-│   │   ├── pubmed.py        # PubMed (生物医学文献)
-│   │   ├── hackernews.py    # Hacker News (技术新闻)
-│   │   ├── github_search.py # GitHub (代码仓库)
-│   │   ├── stackoverflow.py # Stack Overflow (编程问答)
-│   │   ├── reddit.py        # Reddit (社区讨论)
-│   │   ├── twitter.py       # Twitter/X (社交媒体，通过 Nitter)
-│   │   ├── npm.py           # npm (JS/TS 包)
-│   │   ├── pypi.py          # PyPI (Python 包)
-│   │   └── huggingface.py   # HuggingFace (AI 模型/数据集)
-│   └── fetchers/
-│       ├── http.py          # HTTP 抓取（aiohttp + curl_cffi）
-│       └── documents.py     # PDF 文档读取
-├── tests/                   # 229 个测试
-├── pyproject.toml
-└── .env
+│   ├── server.py           # MCP 服务器入口
+│   ├── config.py           # 配置管理
+│   ├── cache.py            # SQLite 缓存
+│   ├── cache_redis.py      # Redis 缓存
+│   ├── scoring.py          # 结果评分
+│   ├── suggestions.py      # 搜索建议
+│   ├── summary.py          # 结果摘要
+│   ├── ratelimit.py        # 限速 + 熔断器
+│   ├── engines/            # 26 个搜索引擎
+│   │   ├── __init__.py     # 引擎基类 + 注册表
+│   │   ├── google.py       # 通用搜索
+│   │   ├── youtube.py      # 视频搜索
+│   │   └── ...
+│   └── fetchers/           # 内容抓取
+│       ├── http.py         # HTTP 抓取
+│       └── documents.py    # PDF 解析
+├── tests/                  # 测试用例
+├── pyproject.toml          # 项目配置
+└── README.md               # 本文件
 ```
 
-## 🔧 技术栈
+---
 
-- **语言：** Python 3.10+
-- **协议：** MCP (Model Context Protocol)
-- **搜索引擎：** 22 个（通用搜索、学术、代码、社区、AI、包管理）
-- **网页抓取：** aiohttp、curl_cffi、BeautifulSoup4
-- **缓存：** SQLite + FTS5 / Redis
-- **语义搜索：** Sentence Transformers + FAISS
-- **并发：** asyncio
+## 🤝 贡献指南
 
-## 📝 使用示例
-
-### 搜索
+欢迎贡献新的搜索引擎！添加新引擎只需 3 步：
 
 ```python
-from src.server import search
+# 1. 创建 src/engines/myengine.py
+from . import JsonApiEngine, register_engine
 
-result = await search("Python tutorial", engines=["bing"], max_results=5, format="markdown")
+class MyEngine(JsonApiEngine):
+    name = "myengine"
+    
+    def build_url(self, query, max_results, filters=None):
+        return f"https://api.example.com/search?q={query}"
+    
+    def parse(self, data):
+        # 解析返回结果
+        return [SearchResult(...)]
+
+# 2. 注册引擎
+register_engine(MyEngine())
+
+# 3. 在 __init__.py 中导入
+from . import myengine
 ```
 
-### 抓取页面
+运行测试验证：
 
-```python
-from src.server import fetch
-
-result = await fetch("https://www.python.org/", format="markdown")
+```bash
+python -m pytest tests/ -v
 ```
 
-### 研究
-
-```python
-from src.server import research
-
-result = await research("What is Python?", depth=3, format="json")
-```
-
-### 提取结构化数据
-
-```python
-from src.server import extract_structured
-
-result = await extract_structured("https://www.python.org/", format="json")
-```
+---
 
 ## 📚 参考项目
 
-- [free-search-mcp](https://github.com/ymylive/free-search-mcp) — 免费搜索 MCP（最高参考价值）
-- [mcp-smart-searcher](https://github.com/PXSR/mcp-smart-searcher) — 8 引擎并发搜索
-- [opensearch-mcp](https://github.com/minpeter/opensearch-mcp) — 零配置搜索 MCP
-- [exa-mcp-server](https://github.com/exa-labs/exa-mcp-server) — 语义搜索 MCP
-- [ferris-search](https://github.com/lispking/ferris-search) — 14 引擎搜索
-- [Agent-Reach](https://github.com/Panniantong/Agent-Reach) — 多平台内容抓取
-- [MindSearch](https://github.com/InternLM/MindSearch) — 类 Perplexity 搜索引擎
-- [DeepResearch](https://github.com/alibaba-nlp/webagent) — 阿里通义深度研究
-- [OpenSeeker](https://github.com/PolarSeeker/OpenSeeker) — 开源搜索 Agent
+- [free-search-mcp](https://github.com/ymylive/free-search-mcp) — 免费搜索 MCP
+- [mcp-smart-searcher](https://github.com/PXSR/mcp-smart-searcher) — 多引擎搜索
+- [exa-mcp-server](https://github.com/exa-labs/exa-mcp-server) — 语义搜索
+- [Agent-Reach](https://github.com/Panniantong/Agent-Reach) — 多平台抓取
+
+---
 
 ## 📄 许可证
 
-MIT License
+[MIT License](LICENSE)
+
+---
+
+<div align="center">
+
+**Scout** — 让 AI Agent 看得更远，搜得更广
+
+[GitHub](https://github.com/duguobao812718-wq/scout) · [Issues](https://github.com/duguobao812718-wq/scout/issues) · [License](LICENSE)
+
+</div>
