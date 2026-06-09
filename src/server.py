@@ -1123,10 +1123,18 @@ def run() -> None:
         cache.close()
         # 关闭共享 aiohttp session
         try:
-            from .fetchers.http import close_session
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(close_session())
-            loop.close()
+            from .fetchers.http import _session, close_session
+            if _session is not None and not _session.closed:
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+                if loop and loop.is_running():
+                    asyncio.ensure_future(close_session())
+                else:
+                    new_loop = asyncio.new_event_loop()
+                    new_loop.run_until_complete(close_session())
+                    new_loop.close()
         except Exception:
             pass
 

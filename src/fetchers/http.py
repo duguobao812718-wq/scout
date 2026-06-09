@@ -12,7 +12,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import warnings
 from typing import Any
+
+# 抑制 aiohttp 进程退出时的资源清理警告（非功能性问题）
+warnings.filterwarnings("ignore", message="Unclosed (client session|connector)", category=ResourceWarning)
+logging.getLogger("asyncio").setLevel(logging.CRITICAL)
 
 import aiohttp
 from bs4 import BeautifulSoup
