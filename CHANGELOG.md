@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] - 2026-06-09
+
+### Added
+
+**搜索引擎 (27 个)**
+- **新增 9 个搜索引擎**
+  - Reddit — 社区讨论、技术评测
+  - Twitter/X — 社交媒体（通过 Nitter）
+  - npm — JavaScript/TypeScript 包搜索
+  - PyPI — Python 包搜索
+  - HuggingFace — AI 模型/数据集搜索
+  - YouTube — 视频搜索
+  - Bilibili — 中文视频搜索
+  - Unsplash — 高质量图片搜索
+  - Podcast — 播客搜索
+  - OpenStreetMap — 地图搜索（Nominatim API）
+
+**性能优化**
+- 引擎级超时控制（单引擎超时不拖累整体）
+- curl_cffi 连接池复用（减少 TLS 握手）
+- fetch_page 缓存读写支持（research 结果可被 cache_search 检索）
+- fetch_many 并发限制（Semaphore 5）
+- 熔断器机制（CircuitBreaker，连续 3 次失败暂停 60 秒）
+
+**代码优化**
+- JsonApiEngine 基类（JSON API 引擎只需实现 build_url 和 parse）
+- append_domain_filters 辅助函数（统一 site: 语法）
+- read_pdf 重定向处理修复
+
+**结构化输出增强**
+- GitHub: 添加 forks, watchers, license, open_issues, archived
+- StackOverflow: 添加 owner_name, owner_reputation, published_age
+
+### Changed
+- 测试从 201 增加到 249 个
+- 代码行数从 ~6300 增加到 ~9000 行
+
 ## [0.2.0] - 2026-06-09
 
 ### Added
