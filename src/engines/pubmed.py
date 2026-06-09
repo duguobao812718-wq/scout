@@ -116,8 +116,8 @@ class PubmedEngine(Engine):
 
     async def _fetch(self, url: str) -> str:
         """两步流程：esearch 获取 PMID → efetch 获取详情。"""
-        from ..fetchers.http import _fetch_with_aiohttp
         from ..config import settings
+        from ..fetchers.http import _fetch_with_aiohttp
 
         # Step 1: esearch 获取 PMID 列表
         search_data = await _fetch_with_aiohttp(url, settings.request_timeout, None)

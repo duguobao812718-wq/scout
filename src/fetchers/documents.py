@@ -39,6 +39,8 @@ async def read_pdf(
             "truncated": bool,
         }
     """
+    from urllib.parse import urljoin
+
     from ..config import settings
     from ..url_safety import assert_url_allowed
 
@@ -53,34 +55,34 @@ async def read_pdf(
 
     timeout = aiohttp.ClientTimeout(total=settings.request_timeout)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.get(url, proxy=settings.proxy, allow_redirects=False) as response:
-            # 手动处理重定向，每次重定向都验证目标 IP
-            redirect_count = 0
-            while response.status in (301, 302, 303, 307, 308) and redirect_count < 10:
-                location = response.headers.get("Location")
-                if not location:
-                    break
-                # 处理相对 URL
-                from urllib.parse import urljoin
-                location = urljoin(url, location)
-                from ..url_safety import assert_url_allowed
-                await assert_url_allowed(location)
-                redirect_count += 1
-                response = await session.get(location, proxy=settings.proxy, allow_redirects=False)
+        current_url = url
+        for _ in range(10):  # 最多 10 次重定向
+            async with session.get(current_url, proxy=settings.proxy, allow_redirects=False) as response:
+                if response.status in (301, 302, 303, 307, 308):
+                    location = response.headers.get("Location")
+                    if not location:
+                        response.raise_for_status()
+                        break
+                    current_url = urljoin(current_url, location)
+                    await assert_url_allowed(current_url)
+                    continue
 
-            response.raise_for_status()
-            # 流式读取，累积超过限制立即中断
-            content_length = response.headers.get("Content-Length")
-            if content_length and int(content_length) > settings.max_response_bytes:
-                raise ValueError(f"PDF 文件过大: {content_length} bytes (限制: {settings.max_response_bytes})")
-            chunks: list[bytes] = []
-            total_size = 0
-            async for chunk in response.content.iter_chunked(65536):
-                total_size += len(chunk)
-                if total_size > settings.max_response_bytes:
-                    raise ValueError(f"PDF 文件过大 (限制: {settings.max_response_bytes})")
-                chunks.append(chunk)
-            pdf_bytes = b"".join(chunks)
+                response.raise_for_status()
+                # 流式读取，累积超过限制立即中断
+                content_length = response.headers.get("Content-Length")
+                if content_length and int(content_length) > settings.max_response_bytes:
+                    raise ValueError(f"PDF 文件过大: {content_length} bytes (限制: {settings.max_response_bytes})")
+                chunks: list[bytes] = []
+                total_size = 0
+                async for chunk in response.content.iter_chunked(65536):
+                    total_size += len(chunk)
+                    if total_size > settings.max_response_bytes:
+                        raise ValueError(f"PDF 文件过大 (限制: {settings.max_response_bytes})")
+                    chunks.append(chunk)
+                pdf_bytes = b"".join(chunks)
+                break
+        else:
+            raise ValueError(f"重定向次数过多: {url}")
 
     # 解析 PDF
     content = await asyncio.to_thread(

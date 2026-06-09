@@ -84,9 +84,32 @@ class StackOverflowEngine(Engine):
             is_answered = item.get("is_answered", False)
             tags = item.get("tags", [])
             view_count = item.get("view_count", 0)
+            creation_date = item.get("creation_date", 0)
+            owner = item.get("owner", {})
+            owner_name = owner.get("display_name", "")
+            owner_reputation = owner.get("reputation", 0)
 
             if not title or not link:
                 continue
+
+            # 计算发布时间
+            published_age = ""
+            if creation_date:
+                from datetime import datetime, timezone
+                try:
+                    created_dt = datetime.fromtimestamp(creation_date, tz=timezone.utc)
+                    age = datetime.now(timezone.utc) - created_dt
+                    if age.days > 365:
+                        published_age = f"{age.days // 365} years ago"
+                    elif age.days > 30:
+                        published_age = f"{age.days // 30} months ago"
+                    elif age.days > 0:
+                        published_age = f"{age.days} days ago"
+                    else:
+                        hours = age.seconds // 3600
+                        published_age = f"{hours} hours ago" if hours > 0 else "just now"
+                except (ValueError, OSError):
+                    pass
 
             # 构建摘要
             snippet_parts = []
@@ -95,8 +118,14 @@ class StackOverflowEngine(Engine):
             snippet_parts.append(f"⬆ {score}")
             snippet_parts.append(f"💬 {answer_count} answers")
             snippet_parts.append(f"👁 {view_count:,} views")
+            if owner_name:
+                snippet_parts.append(f"👤 {owner_name}")
+                if owner_reputation:
+                    snippet_parts.append(f"({owner_reputation:,} rep)")
             if tags:
                 snippet_parts.append(f"🏷️ {', '.join(tags[:3])}")
+            if published_age:
+                snippet_parts.append(f"📅 {published_age}")
             snippet = " | ".join(snippet_parts)
 
             results.append(
@@ -105,6 +134,7 @@ class StackOverflowEngine(Engine):
                     url=link,
                     snippet=snippet,
                     engine=self.name,
+                    published_age=published_age,
                 )
             )
 
@@ -112,8 +142,8 @@ class StackOverflowEngine(Engine):
 
     async def _fetch(self, url: str) -> str:
         """使用 aiohttp 抓取 JSON API。"""
-        from ..fetchers.http import _fetch_with_aiohttp
         from ..config import settings
+        from ..fetchers.http import _fetch_with_aiohttp
 
         return await _fetch_with_aiohttp(url, settings.request_timeout, None)
 

@@ -211,6 +211,8 @@ async def _aggregate_search(
                 filters=filters, diagnostics=diagnostics,
             )
             results_by_engine[name] = results
+            # 记录成功
+            limiter.record_success(name)
             # 从 diagnostics 提取结构化错误信息
             engine_diag = diagnostics.get(name, {})
             if engine_diag.get("error"):
@@ -219,6 +221,8 @@ async def _aggregate_search(
                     "error_kind": engine_diag.get("error_kind", "transient"),
                 }
         except Exception as e:
+            # 记录失败
+            limiter.record_failure(name)
             errors[name] = {"error": str(e), "error_kind": "transient"}
             logger.warning("引擎 %s 搜索失败: %s", name, e)
 

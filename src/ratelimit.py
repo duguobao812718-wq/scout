@@ -1,5 +1,5 @@
 """
-异步令牌桶限速器。
+异步令牌桶限速器 + 熔断器。
 
 参考：free-search-mcp 的 ratelimit.py 实现。
 使用 asyncio.sleep() 实现异步等待，不依赖外部库。
@@ -8,7 +8,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
+
+logger = logging.getLogger("scout.ratelimit")
 
 
 class TokenBucket:
@@ -45,27 +48,100 @@ class TokenBucket:
         self.last_refill = now
 
 
-class RateLimiter:
-    """按 key 限速的限速器。
+class CircuitBreaker:
+    """熔断器。
 
-    每个 key 有独立的令牌桶，支持按引擎名称限速。
+    当连续失败次数超过阈值时，熔断器打开，暂停该引擎一段时间。
+
+    Args:
+        failure_threshold: 触发熔断的连续失败次数。
+        recovery_timeout: 熔断恢复时间（秒）。
+    """
+
+    def __init__(self, failure_threshold: int = 3, recovery_timeout: float = 60.0) -> None:
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.failure_count = 0
+        self.last_failure_time = 0.0
+        self.state = "closed"  # closed (正常) / open (熔断) / half-open (试探)
+
+    def record_success(self) -> None:
+        """记录成功调用，重置熔断器。"""
+        self.failure_count = 0
+        self.state = "closed"
+
+    def record_failure(self) -> None:
+        """记录失败调用。"""
+        self.failure_count += 1
+        self.last_failure_time = time.monotonic()
+        if self.failure_count >= self.failure_threshold:
+            self.state = "open"
+            logger.warning("熔断器打开: 连续 %d 次失败，暂停 %.0f 秒", self.failure_count, self.recovery_timeout)
+
+    def is_available(self) -> bool:
+        """检查是否可用。"""
+        if self.state == "closed":
+            return True
+        if self.state == "open":
+            # 检查是否超过恢复时间
+            if time.monotonic() - self.last_failure_time >= self.recovery_timeout:
+                self.state = "half-open"
+                return True
+            return False
+        # half-open 状态，允许试探
+        return True
+
+
+class RateLimiter:
+    """按 key 限速的限速器 + 熔断器。
+
+    每个 key 有独立的令牌桶和熔断器，支持按引擎名称限速。
     """
 
     def __init__(self, default_rpm: float) -> None:
         self.default_rpm = default_rpm
         self._buckets: dict[str, TokenBucket] = {}
+        self._breakers: dict[str, CircuitBreaker] = {}
 
     def configure(self, key: str, rpm: float) -> None:
         """为指定 key 配置独立的限速。"""
         self._buckets[key] = TokenBucket(rpm)
 
     async def acquire(self, key: str) -> None:
-        """获取指定 key 的令牌。"""
+        """获取指定 key 的令牌（检查熔断状态）。"""
+        # 检查熔断器
+        breaker = self._breakers.get(key)
+        if breaker and not breaker.is_available():
+            raise CircuitOpenError(f"引擎 {key} 已熔断，请稍后重试")
+
         bucket = self._buckets.get(key)
         if bucket is None:
             bucket = TokenBucket(self.default_rpm)
             self._buckets[key] = bucket
         await bucket.acquire()
+
+    def record_success(self, key: str) -> None:
+        """记录指定 key 的成功调用。"""
+        if key not in self._breakers:
+            self._breakers[key] = CircuitBreaker()
+        self._breakers[key].record_success()
+
+    def record_failure(self, key: str) -> None:
+        """记录指定 key 的失败调用。"""
+        if key not in self._breakers:
+            self._breakers[key] = CircuitBreaker()
+        self._breakers[key].record_failure()
+
+    def get_breaker(self, key: str) -> CircuitBreaker:
+        """获取指定 key 的熔断器。"""
+        if key not in self._breakers:
+            self._breakers[key] = CircuitBreaker()
+        return self._breakers[key]
+
+
+class CircuitOpenError(Exception):
+    """熔断器打开时抛出的异常。"""
+    pass
 
 
 # 全局限速器实例

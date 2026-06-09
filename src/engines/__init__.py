@@ -101,6 +101,7 @@ class Engine(abc.ABC):
         filters: SearchFilters | None = None,
         diagnostics: dict[str, Any] | None = None,
         max_retries: int = 2,
+        timeout: float | None = None,
     ) -> list[SearchResult]:
         """完整搜索流程。
 
@@ -116,18 +117,35 @@ class Engine(abc.ABC):
         - error: 错误描述
         - gate: 门控类型（captcha / consent / login）
         """
+        import asyncio
+
         filters = filters or SearchFilters()
         diag = diagnostics or {}
 
         url = self.build_url(query, max_results, filters)
         diag.setdefault(self.name, {})["url"] = url
 
+        # 引擎级超时控制
+        engine_timeout = timeout or self._get_engine_timeout()
+
         # 带重试的抓取（区分错误类型决定是否重试）
         html = None
         for attempt in range(max_retries + 1):
             try:
-                html = await self._fetch(url)
+                html = await asyncio.wait_for(self._fetch(url), timeout=engine_timeout)
                 break
+            except asyncio.TimeoutError:
+                error_kind = "transient"
+                if attempt < max_retries:
+                    wait = 1.0 * (2 ** attempt)  # 指数退避
+                    logger.warning("引擎 %s 超时 (尝试 %d/%d), %.1fs 后重试",
+                                   self.name, attempt + 1, max_retries + 1, wait)
+                    await asyncio.sleep(wait)
+                else:
+                    diag[self.name]["error"] = f"超时 ({engine_timeout}s)"
+                    diag[self.name]["error_kind"] = "transient"
+                    logger.warning("引擎 %s 超时 (%.1fs)", self.name, engine_timeout)
+                    return []
             except Exception as e:
                 error_kind = _classify_error(e)
                 if error_kind == "blocked":
@@ -141,7 +159,6 @@ class Engine(abc.ABC):
                     wait = 1.0 * (2 ** attempt)  # 指数退避
                     logger.warning("引擎 %s 临时错误 (尝试 %d/%d), %.1fs 后重试: %s",
                                    self.name, attempt + 1, max_retries + 1, wait, e)
-                    import asyncio
                     await asyncio.sleep(wait)
                 else:
                     # 其他错误或重试耗尽
@@ -194,11 +211,46 @@ class Engine(abc.ABC):
         diag[self.name]["count"] = len(results)
         return results[:max_results]
 
+    def _get_engine_timeout(self) -> float:
+        """获取引擎超时时间。子类可覆盖以自定义超时。"""
+        from ..config import settings
+        return settings.request_timeout
+
     async def _fetch(self, url: str) -> str:
         """抓取 URL 内容。子类可覆盖以实现特殊抓取逻辑。"""
         from ..fetchers.http import fetch_html
 
         return await fetch_html(url, engine=self.name)
+
+
+class JsonApiEngine(Engine):
+    """JSON API 引擎基类。
+
+    继承此类的引擎默认使用 aiohttp 抓取 JSON API，
+    只需实现 build_url() 和 parse() 方法。
+    """
+
+    async def _fetch(self, url: str) -> str:
+        """使用 aiohttp 抓取 JSON API。"""
+        from ..config import settings
+        from ..fetchers.http import _fetch_with_aiohttp
+
+        return await _fetch_with_aiohttp(url, settings.request_timeout, None)
+
+
+def append_domain_filters(query: str, include_domains: list[str] | None, exclude_domains: list[str] | None = None) -> str:
+    """向查询追加域名过滤器（site: 语法）。
+
+    大多数搜索引擎使用相同的 site: 语法，可以复用。
+    """
+    parts = [query]
+    if include_domains:
+        for domain in include_domains:
+            parts.append(f"site:{domain}")
+    if exclude_domains:
+        for domain in exclude_domains:
+            parts.append(f"-site:{domain}")
+    return " ".join(parts)
 
 
 # ── 辅助函数 ──────────────────────────────────────────────
@@ -443,6 +495,7 @@ def _register_builtin_engines() -> None:
     """注册内置引擎（延迟导入避免循环依赖）。"""
     from . import (  # noqa: F401  # noqa: F401
         academic,
+        bilibili,
         bing,
         brave,
         ddg_news,
@@ -451,13 +504,21 @@ def _register_builtin_engines() -> None:
         google,
         google_scholar,
         hackernews,
+        huggingface,
         mojeek,
+        npm,
+        podcast,
         pubmed,
+        pypi,
+        reddit,
         searxng,
         stackoverflow,
         startpage,
+        twitter,
+        unsplash,
         wikipedia,
         yandex,
+        youtube,
     )
 
     # 引擎在各自的模块中通过 register_engine() 自注册

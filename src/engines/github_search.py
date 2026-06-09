@@ -82,9 +82,15 @@ class GitHubEngine(Engine):
             description = item.get("description", "") or ""
             html_url = item.get("html_url", "")
             stars = item.get("stargazers_count", 0)
+            forks = item.get("forks_count", 0)
+            watchers = item.get("watchers_count", 0)
             language = item.get("language", "")
             topics = item.get("topics", [])
+            license_info = item.get("license", {})
+            license_name = license_info.get("spdx_id", "") if license_info else ""
             updated_at = item.get("updated_at", "")
+            open_issues = item.get("open_issues_count", 0)
+            archived = item.get("archived", False)
 
             if not name or not html_url:
                 continue
@@ -95,10 +101,20 @@ class GitHubEngine(Engine):
                 snippet_parts.append(description[:200])
             if stars:
                 snippet_parts.append(f"⭐ {stars:,}")
+            if forks:
+                snippet_parts.append(f"🍴 {forks:,}")
+            if watchers:
+                snippet_parts.append(f"👁 {watchers:,}")
             if language:
                 snippet_parts.append(f"🔤 {language}")
             if topics:
                 snippet_parts.append(f"🏷️ {', '.join(topics[:3])}")
+            if license_name and license_name != "NOASSERTION":
+                snippet_parts.append(f"📄 {license_name}")
+            if open_issues:
+                snippet_parts.append(f"🐛 {open_issues} issues")
+            if archived:
+                snippet_parts.append("📦 Archived")
             if updated_at:
                 snippet_parts.append(f"📅 {updated_at[:10]}")
             snippet = " | ".join(snippet_parts)
@@ -109,6 +125,7 @@ class GitHubEngine(Engine):
                     url=html_url,
                     snippet=snippet,
                     engine=self.name,
+                    published_age=updated_at[:10] if updated_at else "",
                 )
             )
 
@@ -116,8 +133,8 @@ class GitHubEngine(Engine):
 
     async def _fetch(self, url: str) -> str:
         """使用 aiohttp 抓取 GitHub API。"""
-        from ..fetchers.http import _fetch_with_aiohttp
         from ..config import settings
+        from ..fetchers.http import _fetch_with_aiohttp
 
         return await _fetch_with_aiohttp(url, settings.request_timeout, None)
 

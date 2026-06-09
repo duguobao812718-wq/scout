@@ -101,6 +101,7 @@ async def _fetch_with_aiohttp(
     url: str,
     timeout: float,
     proxy: str | None,
+    headers: dict[str, str] | None = None,
 ) -> str:
     """使用 aiohttp 抓取（复用共享 session，手动处理重定向防 SSRF 绕过）。"""
     from ..url_safety import assert_url_allowed
@@ -112,6 +113,7 @@ async def _fetch_with_aiohttp(
             current_url, proxy=proxy,
             timeout=aiohttp.ClientTimeout(total=timeout),
             allow_redirects=False,
+            headers=headers,
         ) as response:
             if response.status in (301, 302, 303, 307, 308):
                 location = response.headers.get("Location")
@@ -140,33 +142,33 @@ async def _fetch_with_curl_cffi(
     proxy: str | None,
 ) -> str:
     """使用 curl_cffi 抓取（浏览器指纹模拟，手动处理重定向防 SSRF 绕过）。"""
-    from curl_cffi.requests import AsyncSession
 
     from ..url_safety import assert_url_allowed
 
-    async with AsyncSession(impersonate="chrome") as session:
-        current_url = url
-        for _ in range(10):  # 最多 10 次重定向
-            response = await session.get(
-                current_url,
-                timeout=timeout,
-                proxies={"https": proxy, "http": proxy} if proxy else None,
-                allow_redirects=False,
-            )
-            if response.status_code in (301, 302, 303, 307, 308):
-                location = response.headers.get("Location")
-                if not location:
-                    response.raise_for_status()
-                    break
-                from urllib.parse import urljoin
-                current_url = urljoin(current_url, location)
-                await assert_url_allowed(current_url)
-                continue
-            response.raise_for_status()
-            html = response.text
-            break
-        else:
-            raise ValueError(f"重定向次数过多: {url}")
+    # 获取共享的 curl_cffi session
+    session = await _get_curl_cffi_session()
+    current_url = url
+    for _ in range(10):  # 最多 10 次重定向
+        response = await session.get(
+            current_url,
+            timeout=timeout,
+            proxies={"https": proxy, "http": proxy} if proxy else None,
+            allow_redirects=False,
+        )
+        if response.status_code in (301, 302, 303, 307, 308):
+            location = response.headers.get("Location")
+            if not location:
+                response.raise_for_status()
+                break
+            from urllib.parse import urljoin
+            current_url = urljoin(current_url, location)
+            await assert_url_allowed(current_url)
+            continue
+        response.raise_for_status()
+        html = response.text
+        break
+    else:
+        raise ValueError(f"重定向次数过多: {url}")
 
     if not html or not html.strip():
         raise ValueError(f"响应为空: {url}")
@@ -174,19 +176,54 @@ async def _fetch_with_curl_cffi(
     return html
 
 
+# 共享 curl_cffi session（复用连接池）
+_curl_cffi_session: Any | None = None
+_curl_cffi_session_lock = asyncio.Lock()
+
+
+async def _get_curl_cffi_session() -> Any:
+    """获取共享的 curl_cffi session（懒初始化，复用连接池，线程安全）。"""
+    global _curl_cffi_session
+    async with _curl_cffi_session_lock:
+        if _curl_cffi_session is None:
+            from curl_cffi.requests import AsyncSession
+            _curl_cffi_session = AsyncSession(impersonate="chrome")
+        return _curl_cffi_session
+
+
+async def close_curl_cffi_session() -> None:
+    """关闭共享 curl_cffi session（应用关闭时调用）。"""
+    global _curl_cffi_session
+    if _curl_cffi_session is not None:
+        await _curl_cffi_session.close()
+        _curl_cffi_session = None
+
+
 async def fetch_page(
     url: str,
     timeout: float | None = None,
     proxy: str | None = None,
     engine: str | None = None,
+    use_cache: bool = True,
 ) -> dict[str, Any]:
-    """抓取 URL 并提取主要内容。"""
+    """抓取 URL 并提取主要内容。
+
+    支持缓存读写：如果页面已在缓存中且 use_cache=True，直接返回缓存内容。
+    """
+    from ..cache import cache
     from ..formatting import estimate_tokens, smart_truncate
     from ..url_safety import assert_url_allowed
 
     # SSRF 防护（用户直接调用 fetch 时检查）
     if engine is None:
         await assert_url_allowed(url)
+
+    # 尝试从缓存读取
+    if use_cache:
+        cached = await cache.get_page(url)
+        if cached:
+            logger.debug("缓存命中: %s", url)
+            return cached
 
     html = await fetch_html(url, timeout=timeout, proxy=proxy, engine=engine)
 
@@ -204,7 +241,7 @@ async def fetch_page(
     truncated = len(content) > settings.max_content_chars
     content = smart_truncate(content, settings.max_content_chars)
 
-    return {
+    result = {
         "url": url,
         "title": title,
         "content": content,
@@ -213,21 +250,37 @@ async def fetch_page(
         "tokens_estimated": estimate_tokens(content),
     }
 
+    # 写入缓存
+    if use_cache:
+        try:
+            await cache.put_page(url, title, content, engine or "fetch")
+            logger.debug("页面已缓存: %s", url)
+        except Exception as e:
+            logger.debug("缓存写入失败 %s: %s", url, e)
+
+    return result
+
+
+# 并发抓取的信号量限制
+_fetch_semaphore = asyncio.Semaphore(5)
+
 
 async def fetch_many(
     urls: list[str],
     timeout: float | None = None,
     proxy: str | None = None,
     engine: str | None = None,
+    use_cache: bool = True,
 ) -> list[dict[str, Any] | Exception]:
-    """并发抓取多个 URL。"""
+    """并发抓取多个 URL（最多 5 个并发）。"""
 
     async def _fetch_one(url: str) -> dict[str, Any] | Exception:
-        try:
-            return await fetch_page(url, timeout=timeout, proxy=proxy, engine=engine)
-        except Exception as e:
-            logger.warning("抓取失败 %s: %s", url, e)
-            return e
+        async with _fetch_semaphore:
+            try:
+                return await fetch_page(url, timeout=timeout, proxy=proxy, engine=engine, use_cache=use_cache)
+            except Exception as e:
+                logger.warning("抓取失败 %s: %s", url, e)
+                return e
 
     tasks = [_fetch_one(url) for url in urls]
     return await asyncio.gather(*tasks)

@@ -1,18 +1,18 @@
 # Scout
 
-> AI Agent 全能搜索工具 — 完全免费，多引擎，完美适配 AI Agent
+> AI Agent 全能搜索工具 — 完全免费，多引擎，多模态，完美适配 AI Agent
 
 ## ✨ 特性
 
-- 🔍 **多引擎搜索** — Bing、Brave、Google、DuckDuckGo、Mojeek、SearXNG、Wikipedia、Startpage、Yandex、DuckDuckGo News、Semantic Scholar、arXiv
+- 🔍 **26 个搜索引擎** — 通用搜索、学术、代码、社区、AI、包管理、视频、图片、播客
+- 🎬 **多模态搜索** — YouTube、Bilibili 视频搜索、Unsplash 图片搜索、Podcast 搜索
 - 🧠 **语义搜索** — Sentence Transformers + FAISS 意义匹配
-- 🖼️ **图片搜索** — SearXNG 图片分类搜索
-- 🌐 **网页抓取** — HTML 解析、curl_cffi 浏览器指纹
+- 🌐 **网页抓取** — HTML 解析、curl_cffi 浏览器指纹、页面缓存
 - 📦 **完全免费** — 无 API key 要求，无使用限制
 - 🤖 **AI Agent 适配** — MCP 协议，结构化输出
-- ⚡ **高性能** — 并发搜索、SQLite 缓存、RRF 结果合并
-- 🔧 **可扩展** — 模块化设计，易于添加新引擎
-- 🛡️ **安全** — SSRF 防护、代理支持
+- ⚡ **高性能** — 并发搜索、SQLite 缓存、RRF 结果合并、引擎级超时控制、熔断器
+- 🔧 **可扩展** — 模块化设计，JsonApiEngine 基类简化新引擎开发
+- 🛡️ **安全** — SSRF 防护、代理支持、并发限制
 
 ## 🚀 快速开始
 
@@ -79,7 +79,7 @@ SCOUT_REDIS_URL=redis://localhost:6379/0
 
 | 工具 | 功能 | 参数 |
 |------|------|------|
-| `search` | 多引擎搜索 | query, engines, max_results, freshness, include_domains, exclude_domains, format |
+| `search` | 多引擎搜索 | query, engines, max_results, freshness, include_domains, exclude_domains, category, format |
 | `fetch` | 抓取单个 URL | url, format |
 | `fetch_batch` | 批量抓取 | urls, format |
 | `engines` | 列出可用引擎 | - |
@@ -88,8 +88,21 @@ SCOUT_REDIS_URL=redis://localhost:6379/0
 | `semantic_index_page` | 索引页面供语义搜索 | url, format |
 | `image_search` | 图片搜索 | query, max_results, freshness, format |
 | `research` | 搜索 + 抓取组合 | question, depth, freshness, format |
+| `summarize` | 搜索 + 抓取 + 摘要 | question, depth, freshness, format |
 | `read_doc` | 读取 PDF 文档 | source, start, length, format |
 | `extract_structured` | 提取结构化数据 | url, format |
+
+### 搜索引擎分类
+
+| 分类 | 引擎 | 用途 |
+|------|------|------|
+| **通用搜索** | Google, Bing, Brave, DuckDuckGo, Mojeek, Startpage, Yandex, SearXNG | 网页搜索 |
+| **学术搜索** | Semantic Scholar, arXiv, Google Scholar, PubMed | 论文、文献 |
+| **代码搜索** | GitHub, StackOverflow | 代码仓库、编程问答 |
+| **社区搜索** | Reddit, HackerNews, Twitter/X | 社区讨论、技术新闻 |
+| **包搜索** | npm, PyPI, HuggingFace | 包管理、AI 模型 |
+| **知识搜索** | Wikipedia | 百科全书 |
+| **新闻搜索** | DuckDuckGo News | 新闻资讯 |
 
 ## 🔒 安全特性
 
@@ -121,18 +134,22 @@ SCOUT_REDIS_URL=redis://localhost:6379/0
 ```
 scout/
 ├── src/
-│   ├── server.py            # MCP 服务器（7 工具 + 4 提示词）
+│   ├── server.py            # MCP 服务器（12 工具 + 4 提示词 + 3 资源）
 │   ├── config.py            # 配置模块（pydantic-settings）
 │   ├── cache.py             # SQLite 缓存 + FTS5 + stale-while-revalidate
+│   ├── cache_redis.py       # Redis 缓存后端
 │   ├── utils.py             # 公共工具函数（URL 归一化、标题相似度）
 │   ├── ratelimit.py         # 令牌桶限速器
+│   ├── scoring.py           # 结果质量评分
+│   ├── suggestions.py       # 搜索建议（相关搜索/纠错/改写）
+│   ├── summary.py           # 结果摘要 + 可信度评估
 │   ├── formatting.py        # Markdown/JSON 格式化器
 │   ├── errors.py            # 错误类型层级
 │   ├── url_safety.py        # SSRF 防护
-│   ├── semantic.py          # 语义搜索（实验性，可选依赖）
+│   ├── semantic.py          # 语义搜索（Sentence Transformers + FAISS）
 │   ├── structured.py        # 结构化数据提取
 │   ├── prompts.py           # MCP 提示词模板
-│   ├── engines/             # 搜索引擎
+│   ├── engines/             # 22 个搜索引擎
 │   │   ├── bing.py          # Bing (RSS)
 │   │   ├── brave.py         # Brave (curl_cffi)
 │   │   ├── google.py        # Google (curl_cffi)
@@ -143,11 +160,21 @@ scout/
 │   │   ├── startpage.py     # Startpage (Google 隐私前端)
 │   │   ├── yandex.py        # Yandex (俄罗斯搜索引擎)
 │   │   ├── ddg_news.py      # DuckDuckGo News (新闻搜索)
-│   │   └── academic.py      # Semantic Scholar + arXiv (学术搜索)
+│   │   ├── academic.py      # Semantic Scholar + arXiv (学术搜索)
+│   │   ├── google_scholar.py # Google Scholar (学术搜索)
+│   │   ├── pubmed.py        # PubMed (生物医学文献)
+│   │   ├── hackernews.py    # Hacker News (技术新闻)
+│   │   ├── github_search.py # GitHub (代码仓库)
+│   │   ├── stackoverflow.py # Stack Overflow (编程问答)
+│   │   ├── reddit.py        # Reddit (社区讨论)
+│   │   ├── twitter.py       # Twitter/X (社交媒体，通过 Nitter)
+│   │   ├── npm.py           # npm (JS/TS 包)
+│   │   ├── pypi.py          # PyPI (Python 包)
+│   │   └── huggingface.py   # HuggingFace (AI 模型/数据集)
 │   └── fetchers/
 │       ├── http.py          # HTTP 抓取（aiohttp + curl_cffi）
 │       └── documents.py     # PDF 文档读取
-├── tests/                   # 69 个测试
+├── tests/                   # 229 个测试
 ├── pyproject.toml
 └── .env
 ```
@@ -156,9 +183,9 @@ scout/
 
 - **语言：** Python 3.10+
 - **协议：** MCP (Model Context Protocol)
-- **搜索引擎：** Bing (RSS)、Brave、Google、DuckDuckGo、Mojeek、SearXNG、Wikipedia、Startpage、Yandex、DuckDuckGo News、Semantic Scholar、arXiv
+- **搜索引擎：** 22 个（通用搜索、学术、代码、社区、AI、包管理）
 - **网页抓取：** aiohttp、curl_cffi、BeautifulSoup4
-- **缓存：** SQLite + FTS5
+- **缓存：** SQLite + FTS5 / Redis
 - **语义搜索：** Sentence Transformers + FAISS
 - **并发：** asyncio
 

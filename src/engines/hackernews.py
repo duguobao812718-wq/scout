@@ -114,8 +114,8 @@ class HackerNewsEngine(Engine):
 
     async def _fetch(self, url: str) -> str:
         """使用 aiohttp 抓取 JSON API。"""
-        from ..fetchers.http import _fetch_with_aiohttp
         from ..config import settings
+        from ..fetchers.http import _fetch_with_aiohttp
 
         return await _fetch_with_aiohttp(url, settings.request_timeout, None)
 
