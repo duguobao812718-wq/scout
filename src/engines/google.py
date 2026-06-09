@@ -19,6 +19,7 @@ from . import (
     register_engine,
     text_of,
 )
+from ..utils import normalize_url, unwrap_google_url
 
 
 class GoogleEngine(Engine):
@@ -76,44 +77,52 @@ class GoogleEngine(Engine):
         results: list[SearchResult] = []
         seen_urls: set[str] = set()
 
-        # Google 使用 div.g 或 div[data-hveid] 容器
-        containers = soup.select("div.g, div[data-hveid]")
+        # Google 搜索结果容器（按优先级尝试多种选择器）
+        containers = soup.select("div.g")
         if not containers:
-            # 备用选择器
-            containers = soup.select(".tF2Cxc, .MjjYud")
+            containers = soup.select("div.tF2Cxc")
+        if not containers:
+            containers = soup.select("div.MjjYud")
 
         for container in containers:
-            # 标题和链接
-            link = container.select_one("a[href]")
+            # 链接 - 优先从 yuRUbf（标准结果）获取
+            link = container.select_one("div.yuRUbf a[href], a[href]")
             if not link:
                 continue
 
             url = link.get("href", "")
 
             # 解包 Google 重定向 URL
-            url = _unwrap_google_url(url)
+            url = unwrap_google_url(url)
 
-            # 过滤 Google 内部链接
-            if not url or "google.com" in url:
+            # 过滤 Google 内部链接和无效链接
+            if not url or not url.startswith("http"):
+                continue
+            if any(skip in url for skip in [
+                "google.com", "google.co", "youtube.com/results",
+                "accounts.google", "support.google", "policies.google",
+            ]):
                 continue
 
-            # 去重
-            if url in seen_urls:
+            # 去重（归一化后比较）
+            normalized = normalize_url(url)
+            if normalized in seen_urls:
                 continue
-            seen_urls.add(url)
+            seen_urls.add(normalized)
 
             # 标题
-            title_el = container.select_one("h3, .LC20lb, .DKV0Md")
+            title_el = container.select_one("h3")
             title = text_of(title_el) if title_el else ""
 
             # 摘要 - 多个备用选择器
             snippet = ""
             snippet_selectors = [
-                ".VwiC3b",
-                ".IsZvec",
-                ".s3v9rd",
-                ".st",
-                ".lEBKkf",
+                ".VwiC3b",   # 标准摘要
+                ".IsZvec",   # 特征摘要
+                ".s3v9rd",   # 备用摘要
+                ".st",       # 旧版摘要
+                ".lEBKkf",   # 新版摘要
+                "span.aCOpRe",  # 行内摘要
             ]
             for selector in snippet_selectors:
                 el = container.select_one(selector)
@@ -139,26 +148,6 @@ class GoogleEngine(Engine):
         return results
 
 
-def _unwrap_google_url(url: str) -> str:
-    """解包 Google 重定向 URL。
-
-    Google 将外部链接包装为 /url?q=<target>&...
-    """
-    if not url:
-        return ""
-
-    # 处理相对 URL
-    if url.startswith("/url?"):
-        parsed = urllib.parse.urlparse(f"https://www.google.com{url}")
-        qs = urllib.parse.parse_qs(parsed.query)
-        if "q" in qs:
-            return qs["q"][0]
-
-    # 处理直接链接
-    if url.startswith("http"):
-        return url
-
-    return url
 
 
 # 注册引擎

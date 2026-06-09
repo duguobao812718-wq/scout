@@ -136,7 +136,7 @@ async def _resolve_hostname(hostname: str) -> list[str]:
     import asyncio
 
     # 使用 asyncio 的 DNS 解析
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     try:
         # getaddrinfo 返回所有地址（IPv4 和 IPv6）
         infos = await loop.getaddrinfo(

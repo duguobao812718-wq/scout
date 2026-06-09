@@ -15,21 +15,24 @@ def estimate_tokens(text: str) -> int:
 
     规则：
     - CJK 字符：1 字符 ≈ 1 token
-    - 拉丁字符：4 字符 ≈ 1 token
+    - 拉丁/标点/数字：4 字符 ≈ 1 token
+    - 空格不计入
     """
     if not text:
         return 0
 
     cjk_count = 0
-    latin_count = 0
+    other_count = 0
 
     for ch in text:
-        if _is_cjk(ch):
+        if ch.isspace():
+            continue
+        elif _is_cjk(ch):
             cjk_count += 1
-        elif ch.isascii() and not ch.isspace():
-            latin_count += 1
+        else:
+            other_count += 1
 
-    return cjk_count + (latin_count + 3) // 4
+    return cjk_count + (other_count + 3) // 4
 
 
 def _is_cjk(ch: str) -> bool:
@@ -109,7 +112,7 @@ def render_search(payload: dict[str, Any]) -> str:
             lines.append(f"   {snippet}")
         if engines:
             engine_str = ", ".join(engines)
-            lines.append(f"   _来源: {engine_str} | 分数: {score:.2f}_")
+            lines.append(f"   _来源: {engine_str} | 分数: {score:.4f}_")
         lines.append("")
 
     # 添加元信息
@@ -181,22 +184,58 @@ def render_research(payload: dict[str, Any]) -> str:
 
 
 def errors_to_hint(errors: dict[str, Any] | None) -> str:
-    """将引擎错误转换为 LLM 可理解的提示。"""
+    """将引擎错误转换为 Agent 可操作的提示。
+
+    根据 error_kind 给出不同建议：
+    - blocked: 被封禁，建议换引擎或稍后重试
+    - transient: 临时错误，建议重试
+    - misconfigured: 配置错误，建议检查设置
+    """
     if not errors:
         return ""
 
-    hints = []
+    # 按错误类型分组
+    blocked: list[str] = []
+    transient: list[str] = []
+    misconfigured: list[str] = []
+    unknown: list[str] = []
+
     for engine, error in errors.items():
-        if isinstance(error, str):
-            hints.append(f"- {engine}: {error}")
-        elif isinstance(error, dict):
+        if engine == "all":
+            unknown.append(error if isinstance(error, str) else str(error))
+            continue
+
+        kind = "transient"
+        msg = ""
+
+        if isinstance(error, dict):
+            kind = error.get("error_kind", "transient")
             msg = error.get("error", str(error))
-            hints.append(f"- {engine}: {msg}")
+        elif isinstance(error, str):
+            msg = error
+        else:
+            msg = str(error)
 
-    if not hints:
-        return ""
+        if kind == "blocked":
+            blocked.append(engine)
+        elif kind == "misconfigured":
+            misconfigured.append(engine)
+        elif kind == "transient":
+            transient.append(engine)
+        else:
+            unknown.append(f"{engine}: {msg}")
 
-    return "部分引擎出错:\n" + "\n".join(hints)
+    parts = []
+    if blocked:
+        parts.append(f"被封禁: {', '.join(blocked)} — 建议使用其他引擎或稍后重试")
+    if transient:
+        parts.append(f"临时错误: {', '.join(transient)} — 可能是网络问题，建议重试")
+    if misconfigured:
+        parts.append(f"配置问题: {', '.join(misconfigured)} — 请检查代理或网络配置")
+    if unknown:
+        parts.extend(unknown)
+
+    return "\n".join(parts) if parts else ""
 
 
 def render_structured(payload: dict[str, Any]) -> str:

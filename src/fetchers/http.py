@@ -21,8 +21,35 @@ from ..config import settings
 
 logger = logging.getLogger("scout.fetcher")
 
-# 需要浏览器指纹的引擎
-_BROWSER_ENGINES = {"duckduckgo"}
+# 需要浏览器指纹的引擎（绕过反爬检测）
+_BROWSER_ENGINES = {"duckduckgo", "brave", "google"}
+
+# 共享 aiohttp session（复用连接池）
+_session: aiohttp.ClientSession | None = None
+_session_lock = asyncio.Lock()
+
+
+async def _get_session() -> aiohttp.ClientSession:
+    """获取共享的 aiohttp session（懒初始化，复用连接池，线程安全）。"""
+    global _session
+    async with _session_lock:
+        if _session is None or _session.closed:
+            timeout = aiohttp.ClientTimeout(total=settings.request_timeout)
+            headers = {
+                "User-Agent": settings.user_agent,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": settings.accept_language,
+            }
+            _session = aiohttp.ClientSession(headers=headers, timeout=timeout)
+        return _session
+
+
+async def close_session() -> None:
+    """关闭共享 session（应用关闭时调用）。"""
+    global _session
+    if _session and not _session.closed:
+        await _session.close()
+        _session = None
 
 
 def _get_proxy(engine: str | None = None) -> str | None:
@@ -48,6 +75,11 @@ async def fetch_html(
     对于需要浏览器指纹的引擎（如 DuckDuckGo），使用 curl_cffi。
     其他引擎使用 aiohttp。
     """
+    # SSRF 防护（引擎搜索 URL 跳过检查，因为搜索引擎 URL 是可信的）
+    if engine is None:
+        from ..url_safety import assert_url_allowed
+        await assert_url_allowed(url)
+
     if timeout is None:
         timeout = settings.request_timeout
 
@@ -65,19 +97,31 @@ async def _fetch_with_aiohttp(
     timeout: float,
     proxy: str | None,
 ) -> str:
-    """使用 aiohttp 抓取。"""
-    headers = {
-        "User-Agent": settings.user_agent,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": settings.accept_language,
-    }
+    """使用 aiohttp 抓取（复用共享 session，手动处理重定向防 SSRF 绕过）。"""
+    from ..url_safety import assert_url_allowed
 
-    timeout_obj = aiohttp.ClientTimeout(total=timeout)
-
-    async with aiohttp.ClientSession(headers=headers, timeout=timeout_obj) as session:
-        async with session.get(url, proxy=proxy) as response:
+    session = await _get_session()
+    current_url = url
+    for _ in range(10):  # 最多 10 次重定向
+        async with session.get(
+            current_url, proxy=proxy,
+            timeout=aiohttp.ClientTimeout(total=timeout),
+            allow_redirects=False,
+        ) as response:
+            if response.status in (301, 302, 303, 307, 308):
+                location = response.headers.get("Location")
+                if not location:
+                    response.raise_for_status()
+                    break
+                from urllib.parse import urljoin
+                current_url = urljoin(current_url, location)
+                await assert_url_allowed(current_url)
+                continue
             response.raise_for_status()
             html = await response.text()
+            break
+    else:
+        raise ValueError(f"重定向次数过多: {url}")
 
     if not html or not html.strip():
         raise ValueError(f"响应为空: {url}")
@@ -90,17 +134,33 @@ async def _fetch_with_curl_cffi(
     timeout: float,
     proxy: str | None,
 ) -> str:
-    """使用 curl_cffi 抓取（浏览器指纹模拟）。"""
+    """使用 curl_cffi 抓取（浏览器指纹模拟，手动处理重定向防 SSRF 绕过）。"""
+    from ..url_safety import assert_url_allowed
     from curl_cffi.requests import AsyncSession
 
     async with AsyncSession(impersonate="chrome") as session:
-        response = await session.get(
-            url,
-            timeout=timeout,
-            proxies={"https": proxy, "http": proxy} if proxy else None,
-        )
-        response.raise_for_status()
-        html = response.text
+        current_url = url
+        for _ in range(10):  # 最多 10 次重定向
+            response = await session.get(
+                current_url,
+                timeout=timeout,
+                proxies={"https": proxy, "http": proxy} if proxy else None,
+                allow_redirects=False,
+            )
+            if response.status_code in (301, 302, 303, 307, 308):
+                location = response.headers.get("Location")
+                if not location:
+                    response.raise_for_status()
+                    break
+                from urllib.parse import urljoin
+                current_url = urljoin(current_url, location)
+                await assert_url_allowed(current_url)
+                continue
+            response.raise_for_status()
+            html = response.text
+            break
+        else:
+            raise ValueError(f"重定向次数过多: {url}")
 
     if not html or not html.strip():
         raise ValueError(f"响应为空: {url}")
@@ -116,6 +176,11 @@ async def fetch_page(
 ) -> dict[str, Any]:
     """抓取 URL 并提取主要内容。"""
     from ..formatting import estimate_tokens, smart_truncate
+    from ..url_safety import assert_url_allowed
+
+    # SSRF 防护（用户直接调用 fetch 时检查）
+    if engine is None:
+        await assert_url_allowed(url)
 
     html = await fetch_html(url, timeout=timeout, proxy=proxy, engine=engine)
 

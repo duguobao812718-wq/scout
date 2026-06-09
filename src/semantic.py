@@ -2,7 +2,7 @@
 语义搜索模块。
 
 使用 Sentence Transformers + FAISS 进行语义搜索。
-参考：free-search-mcp 的语义搜索设计。
+需要额外安装：pip install scout[semantic]
 """
 
 from __future__ import annotations

@@ -19,6 +19,7 @@ from . import (
     register_engine,
     text_of,
 )
+from ..utils import normalize_url
 
 
 class BraveEngine(Engine):
@@ -75,25 +76,46 @@ class BraveEngine(Engine):
         """解析 Brave HTML 搜索结果。"""
         soup = parse_html(html)
         results: list[SearchResult] = []
+        seen_urls: set[str] = set()
 
         # Brave 使用 div.snippet[data-type="web"] 容器
         containers = soup.select('div.snippet[data-type="web"]')
         if not containers:
-            # 备用选择器
-            containers = soup.select(".snippet")
+            containers = soup.select("div.snippet")
+        if not containers:
+            # 更宽泛的备用选择器
+            containers = soup.select("div[id^='snippet-']")
 
         for container in containers:
-            # 标题和链接
-            link = container.select_one("a.snippet-title, a.result-header")
+            # 标题和链接 - 多种选择器
+            link = container.select_one(
+                "a.snippet-title, a.result-header, "
+                "a[data-type='web'], "
+                "div.snippet-title a"
+            )
             if not link:
-                continue
+                # 尝试从容器内任意链接
+                link = container.select_one("a[href]")
+                if not link:
+                    continue
 
             title = text_of(link)
             url = link.get("href", "")
 
-            # 过滤 Brave 内部链接
-            if not url or "search.brave.com" in url:
+            # 过滤 Brave 内部链接和无效链接
+            if not url or not url.startswith("http"):
                 continue
+            if any(skip in url for skip in [
+                "search.brave.com", "brave.com/search",
+                "brave.com/app", "brave.com/news",
+            ]):
+                continue
+
+            # 归一化去重
+            normalized = normalize_url(url)
+            if normalized in seen_urls:
+                continue
+            seen_urls.add(normalized)
 
             # 摘要
             snippet = ""
@@ -101,6 +123,8 @@ class BraveEngine(Engine):
                 ".snippet-description",
                 ".snippet-content",
                 ".result-description",
+                ".snippet-snippet",
+                "p.snippet-description",
             ]
             for selector in snippet_selectors:
                 el = container.select_one(selector)
@@ -124,6 +148,8 @@ class BraveEngine(Engine):
                 )
 
         return results
+
+
 
 
 # 注册引擎

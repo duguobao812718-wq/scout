@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     proxy_engines: list[str] = []  # 仅这些引擎使用代理，空列表 = 全部
     no_proxy_engines: list[str] = []  # 这些引擎跳过代理（国内引擎）
 
+    # ── SearXNG ─────────────────────────────────────────
+    searxng_instances: list[str] = []  # 自定义实例列表，空列表使用默认
+
     # ── 安全 ──────────────────────────────────────────────
     allow_private_hosts: bool = False
     max_response_bytes: int = 25_000_000  # 25 MB

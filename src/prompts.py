@@ -48,9 +48,18 @@ def factcheck_prompt(claim: str) -> str:
     )
 
 
-def compare_sources(question: str, urls: list[str]) -> str:
-    """比较来源提示词：指导模型比较多个来源。"""
-    urls_str = ", ".join(urls)
+def compare_sources(question: str, urls: str | list[str]) -> str:
+    """比较来源提示词：指导模型比较多个来源。
+
+    Args:
+        question: 要回答的问题。
+        urls: URL 列表，可以是逗号分隔的字符串或 list。
+    """
+    if isinstance(urls, str):
+        urls_list = [u.strip() for u in urls.split(",") if u.strip()]
+    else:
+        urls_list = urls
+    urls_str = ", ".join(urls_list)
     return (
         f"Use the `fetch` tool to read the following URLs: {urls_str}\n\n"
         f"Then answer the question with [n] citations to the URL it came from.\n"

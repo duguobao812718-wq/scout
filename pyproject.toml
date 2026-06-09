@@ -16,8 +16,8 @@ dependencies = [
     "aiohttp>=3.9.0",
     "lxml>=5.0.0",
     "pydantic-settings>=2.0.0",
-    "trafilatura>=1.6.0",
     "curl_cffi>=0.15.0",
+    "defusedxml>=0.7.0",
 ]
 
 [project.optional-dependencies]
@@ -25,11 +25,8 @@ semantic = [
     "sentence-transformers>=2.2.0",
     "faiss-cpu>=1.7.0",
 ]
-playwright = [
-    "playwright>=1.40.0",
-]
 all = [
-    "scout[semantic,playwright]",
+    "scout[semantic]",
 ]
 
 [project.scripts]

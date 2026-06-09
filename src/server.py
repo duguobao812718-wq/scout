@@ -2,7 +2,7 @@
 Scout MCP 服务器入口。
 
 使用 FastMCP 框架，注册搜索工具供 AI Agent 调用。
-所有核心逻辑直接内联，避免模块间导入死锁。
+包含 8 个工具 + 4 个提示词。
 """
 
 import asyncio
@@ -11,6 +11,7 @@ import json
 import logging
 import time
 from typing import Any, Literal
+import urllib.parse
 from urllib.parse import urlparse
 
 from mcp.server.fastmcp import Context, FastMCP
@@ -29,6 +30,7 @@ from .formatting import (
     smart_truncate,
 )
 from .ratelimit import get_limiter
+from .utils import normalize_url, title_similarity  # noqa: F401 (used in _merge_rrf)
 
 # 配置日志
 logging.basicConfig(
@@ -54,65 +56,73 @@ def _merge_rrf(
     results_by_engine: dict[str, list[SearchResult]],
     max_results: int,
 ) -> list[dict[str, Any]]:
-    """Reciprocal Rank Fusion 合并。"""
+    """Reciprocal Rank Fusion 合并 + URL 归一化去重。"""
+    # 用归一化 URL 做 key，保留原始 URL
+    norm_to_canonical: dict[str, str] = {}  # normalized -> original URL
     url_scores: dict[str, float] = {}
     url_info: dict[str, dict[str, Any]] = {}
 
     for engine_name, results in results_by_engine.items():
         for rank, result in enumerate(results, 1):
-            url = result.url
-            score = 1.0 / (_RRF_K + rank)
-            url_scores[url] = url_scores.get(url, 0) + score
+            normalized = normalize_url(result.url)
 
-            if url not in url_info:
-                url_info[url] = {
+            # 找到已有的 canonical URL（如果此 URL 的变体已出现过）
+            canonical = norm_to_canonical.get(normalized)
+            if canonical is None:
+                # 新 URL，建立映射
+                canonical = result.url
+                norm_to_canonical[normalized] = canonical
+
+            score = 1.0 / (_RRF_K + rank)
+            url_scores[canonical] = url_scores.get(canonical, 0) + score
+
+            if canonical not in url_info:
+                url_info[canonical] = {
                     "title": result.title,
                     "url": result.url,
                     "snippet": result.snippet,
                     "engines": [],
                     "published_age": result.published_age,
                 }
-            url_info[url]["engines"].append(engine_name)
-            if len(result.snippet) > len(url_info[url]["snippet"]):
-                url_info[url]["snippet"] = result.snippet
+            url_info[canonical]["engines"].append(engine_name)
+            # 保留最长的摘要
+            if len(result.snippet) > len(url_info[canonical]["snippet"]):
+                url_info[canonical]["snippet"] = result.snippet
+            # 保留更详细的标题（如果当前标题更长）
+            if len(result.title) > len(url_info[canonical]["title"]):
+                url_info[canonical]["title"] = result.title
 
     sorted_urls = sorted(url_scores.keys(), key=lambda u: url_scores[u], reverse=True)
 
-    seen_hosts: dict[str, set[str]] = {}
+    # 跨域名标题去重
+    seen_hosts: dict[str, list[str]] = {}  # host -> [title1, title2, ...]
     merged = []
     for url in sorted_urls:
         info = url_info[url]
         host = urlparse(url).hostname or ""
         title = info["title"]
+
         if host in seen_hosts:
-            title_tokens = set(title.lower().split())
-            for seen in seen_hosts[host]:
-                seen_tokens = set(seen.lower().split())
-                if title_tokens and seen_tokens:
-                    overlap = len(title_tokens & seen_tokens)
-                    min_len = min(len(title_tokens), len(seen_tokens))
-                    if min_len > 0 and overlap / min_len > 0.8:
-                        break
-            else:
-                seen_hosts[host].add(title.lower())
-                merged.append({
-                    "title": info["title"],
-                    "url": info["url"],
-                    "snippet": info["snippet"],
-                    "engines": info["engines"],
-                    "score": url_scores[url],
-                    "published_age": info["published_age"],
-                })
+            # 检查同域名下是否有高度相似的标题
+            duplicate = False
+            for seen_title in seen_hosts[host]:
+                if title_similarity(title, seen_title) > 0.8:
+                    duplicate = True
+                    break
+            if duplicate:
+                continue
+            seen_hosts[host].append(title.lower())
         else:
-            seen_hosts[host] = {title.lower()}
-            merged.append({
-                "title": info["title"],
-                "url": info["url"],
-                "snippet": info["snippet"],
-                "engines": info["engines"],
-                "score": url_scores[url],
-                "published_age": info["published_age"],
-            })
+            seen_hosts[host] = [title.lower()]
+
+        merged.append({
+            "title": info["title"],
+            "url": info["url"],
+            "snippet": info["snippet"],
+            "engines": info["engines"],
+            "score": url_scores[url],
+            "published_age": info["published_age"],
+        })
         if len(merged) >= max_results:
             break
 
@@ -163,22 +173,44 @@ async def _aggregate_search(
 
     cache_key = cache.make_cache_key(query, valid_engines, max_results, filters_dict)
     if use_cache:
-        cached = await cache.get_search(cache_key, max_age_seconds=max_age_seconds)
+        cached, is_stale = await cache.get_search(cache_key, max_age_seconds=max_age_seconds)
         if cached is not None:
-            return {"query": query, "engines": valid_engines, "results": cached, "cached": True, "errors": {}}
+            # stale-while-revalidate：先返回旧缓存，后台刷新
+            if is_stale:
+                logger.info("缓存 stale 命中，后台刷新: %s", query[:50])
+                # 不等待后台任务完成，直接返回旧数据
+                task = asyncio.create_task(_refresh_search_cache(
+                    cache_key, query, valid_engines, filters, max_results,
+                ))
+                task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+            return {
+                "query": query, "engines": valid_engines, "results": cached,
+                "cached": True, "stale": is_stale, "errors": {},
+            }
 
     results_by_engine: dict[str, list[SearchResult]] = {}
-    errors: dict[str, str] = {}
+    errors: dict[str, Any] = {}
+    diagnostics: dict[str, Any] = {}
 
     async def _search_engine(name: str) -> None:
         engine = get_engine(name)
         limiter = get_limiter()
         try:
             await limiter.acquire(name)
-            results = await engine.search(query, max_results=settings.max_results_per_engine, filters=filters)
+            results = await engine.search(
+                query, max_results=settings.max_results_per_engine,
+                filters=filters, diagnostics=diagnostics,
+            )
             results_by_engine[name] = results
+            # 从 diagnostics 提取结构化错误信息
+            engine_diag = diagnostics.get(name, {})
+            if engine_diag.get("error"):
+                errors[name] = {
+                    "error": engine_diag["error"],
+                    "error_kind": engine_diag.get("error_kind", "transient"),
+                }
         except Exception as e:
-            errors[name] = str(e)
+            errors[name] = {"error": str(e), "error_kind": "transient"}
             logger.warning("引擎 %s 搜索失败: %s", name, e)
 
     await asyncio.gather(*[_search_engine(n) for n in valid_engines])
@@ -188,6 +220,36 @@ async def _aggregate_search(
         await cache.put_search(cache_key, query, valid_engines, merged)
 
     return {"query": query, "engines": valid_engines, "results": merged, "cached": False, "errors": errors}
+
+
+async def _refresh_search_cache(
+    cache_key: str,
+    query: str,
+    engines: list[str],
+    filters: SearchFilters,
+    max_results: int,
+) -> None:
+    """后台刷新搜索缓存（stale-while-revalidate）。"""
+    try:
+        results_by_engine: dict[str, list[SearchResult]] = {}
+
+        async def _refresh_engine(name: str) -> None:
+            engine = get_engine(name)
+            limiter = get_limiter()
+            try:
+                await limiter.acquire(name)
+                results = await engine.search(query, max_results=settings.max_results_per_engine, filters=filters)
+                results_by_engine[name] = results
+            except Exception as e:
+                logger.debug("后台刷新引擎 %s 失败: %s", name, e)
+
+        await asyncio.gather(*[_refresh_engine(n) for n in engines])
+        merged = _merge_rrf(results_by_engine, max_results)
+        if merged:
+            await cache.put_search(cache_key, query, engines, merged)
+            logger.debug("后台缓存刷新完成: %s", query[:50])
+    except Exception as e:
+        logger.warning("后台缓存刷新失败: %s", e)
 
 
 async def _run_research(
@@ -349,7 +411,7 @@ async def fetch(
     - Verifying a single claim by reading the source.
 
     Not recommended for:
-    - Multiple URLs at once -> use `fetch_batch` (not yet implemented).
+    - Multiple URLs at once -> use `fetch_batch`.
     - You don't have a URL yet -> use `search` first.
 
     Returns:
@@ -366,6 +428,71 @@ async def fetch(
 
 @mcp.tool(
     annotations=ToolAnnotations(
+        title="Fetch multiple URLs",
+        readOnlyHint=True, idempotentHint=True, openWorldHint=True,
+    ),
+)
+async def fetch_batch(
+    urls: list[str],
+    format: Format = "markdown",
+) -> str | dict[str, Any]:
+    """Fetch multiple URLs in parallel and return their contents.
+
+    Best for:
+    - You have a list of URLs from `search` and want to read them all.
+    - Bulk data collection from known sources.
+
+    Not recommended for:
+    - You only need one URL -> use `fetch`.
+    - You don't have URLs yet -> use `search` first.
+
+    Returns:
+    - json: {results: [{url, title, content, ...}], errors: {index: msg}}.
+    - markdown: concatenated results with headers.
+
+    Args:
+        urls: List of absolute http(s) URLs (max 10).
+        format: "markdown" or "json".
+    """
+    if not urls:
+        raise ValueError("urls must not be empty")
+    urls = urls[:10]
+
+    results = await fetch_many(urls)
+
+    documents = []
+    errors: dict[str, str] = {}
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            errors[f"fetch_{i}"] = f"{urls[i]}: {result}"
+        else:
+            documents.append(result)
+
+    payload = {"urls": urls, "documents": documents, "errors": errors}
+
+    if format == "json":
+        return payload
+
+    # markdown 渲染（包含成功和失败结果）
+    lines = []
+    for doc in documents:
+        lines.append(f"# {doc.get('title', '(无标题)')}")
+        lines.append(f"URL: {doc['url']}")
+        lines.append("")
+        lines.append(doc.get("content", ""))
+        lines.append("\n---\n")
+
+    if errors:
+        lines.append("# 抓取失败")
+        for key, msg in errors.items():
+            lines.append(f"- {msg}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
         title="List available search engines",
         readOnlyHint=True, idempotentHint=True, openWorldHint=False,
     ),
@@ -377,6 +504,247 @@ def engines() -> list[str]:
     - A list of engine name strings.
     """
     return _list_engines()
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Search cached pages",
+        readOnlyHint=True, idempotentHint=True, openWorldHint=False,
+    ),
+)
+async def cache_search(
+    query: str,
+    limit: int = 10,
+    format: Format = "markdown",
+) -> str | dict[str, Any]:
+    """Full-text search across previously fetched and cached pages.
+
+    Best for:
+    - Finding content from pages you've already fetched via `fetch` or `research`.
+    - Searching your local knowledge base of cached web content.
+
+    Not recommended for:
+    - First-time search -> use `search` or `research`.
+    - Pages not yet fetched -> use `fetch` first.
+
+    Returns:
+    - markdown (default): list of matching pages with snippets.
+    - json: {query, results: [{url, title, snippet}]}.
+
+    Args:
+        query: Search query (supports FTS5 syntax).
+        limit: Max results to return.
+        format: "markdown" or "json".
+    """
+    if not query.strip():
+        raise ValueError("query must not be empty")
+
+    results = await cache.search_pages(query, limit=limit)
+    payload = {"query": query, "results": results, "count": len(results)}
+
+    if format == "json":
+        return payload
+
+    if not results:
+        return "_缓存中未找到匹配内容。_\n"
+
+    lines = []
+    for i, r in enumerate(results, 1):
+        title = r.get("title", "(无标题)")
+        url = r.get("url", "")
+        snippet = r.get("snippet", "")
+        lines.append(f"{i}. **{title}**")
+        lines.append(f"   <{url}>")
+        if snippet:
+            lines.append(f"   {snippet}")
+    return "\n".join(lines)
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Semantic search indexed pages",
+        readOnlyHint=True, idempotentHint=True, openWorldHint=False,
+    ),
+)
+async def semantic_search(
+    query: str,
+    top_k: int = 10,
+    format: Format = "markdown",
+) -> str | dict[str, Any]:
+    """Search through semantically indexed pages using meaning-based matching.
+
+    Best for:
+    - Finding pages by concept rather than exact keywords.
+    - "Find me pages about X" when keyword search misses.
+    - Searching content you've already indexed via `semantic_index`.
+
+    Not recommended for:
+    - First-time search -> use `search` or `research`.
+    - You haven't indexed any content yet -> use `semantic_index` first.
+
+    Requires: pip install scout[semantic]
+
+    Returns:
+    - markdown (default): ranked list with similarity scores.
+    - json: {query, results: [{url, title, content, score}]}.
+
+    Args:
+        query: Natural-language description of what you're looking for.
+        top_k: Max results to return.
+        format: "markdown" or "json".
+    """
+    if not query.strip():
+        raise ValueError("query must not be empty")
+
+    try:
+        from .semantic import semantic_index
+    except ImportError:
+        return _maybe_render(
+            {"error": "语义搜索需要额外安装: pip install scout[semantic]"},
+            format, lambda p: f"_{p['error']}_\n",
+        )
+
+    results = await semantic_index.search(query, top_k=top_k)
+    payload = {"query": query, "results": results, "count": len(results)}
+
+    if format == "json":
+        return payload
+
+    if not results:
+        return "_未找到语义匹配的内容。请先用 `semantic_index` 索引页面。_\n"
+
+    lines = []
+    for i, r in enumerate(results, 1):
+        title = r.get("title", "(无标题)")
+        url = r.get("url", "")
+        score = r.get("score", 0)
+        content = r.get("content", "")[:200]
+        lines.append(f"{i}. **{title}** (相似度: {score:.3f})")
+        lines.append(f"   <{url}>")
+        if content:
+            lines.append(f"   {content}")
+    return "\n".join(lines)
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Index a page for semantic search",
+        readOnlyHint=False, idempotentHint=True, openWorldHint=True,
+    ),
+)
+async def semantic_index_page(
+    url: str,
+    format: Format = "markdown",
+) -> str | dict[str, Any]:
+    """Fetch a page and add it to the semantic search index.
+
+    Best for:
+    - Indexing important pages for later semantic retrieval.
+    - Building a knowledge base that `semantic_search` can query.
+
+    Not recommended for:
+    - Just reading a page -> use `fetch`.
+    - You don't need semantic search -> use `cache_search` instead.
+
+    Requires: pip install scout[semantic]
+
+    Returns:
+    - markdown (default): confirmation with page title.
+    - json: {url, title, indexed: true}.
+
+    Args:
+        url: Absolute http(s) URL to fetch and index.
+        format: "markdown" or "json".
+    """
+    try:
+        from .semantic import semantic_index
+    except ImportError:
+        msg = "语义搜索需要额外安装: pip install scout[semantic]"
+        return _maybe_render({"error": msg}, format, lambda p: f"_{p['error']}_\n")
+
+    # 抓取页面
+    page = await fetch_page(url)
+
+    # 添加到索引
+    await semantic_index.add(
+        url=page["url"],
+        title=page.get("title", ""),
+        content=page.get("content", ""),
+    )
+
+    payload = {
+        "url": page["url"],
+        "title": page.get("title", ""),
+        "indexed": True,
+        "truncated": page.get("truncated", False),
+    }
+
+    if format == "json":
+        return payload
+
+    return f"✅ 已索引: **{page.get('title', url)}**\n\n可用 `semantic_search` 搜索此内容。"
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Image search via SearXNG",
+        readOnlyHint=True, idempotentHint=False, openWorldHint=True,
+    ),
+)
+async def image_search(
+    query: str,
+    max_results: int = 10,
+    freshness: Literal["day", "week", "month", "year"] | None = None,
+    format: Format = "markdown",
+) -> str | dict[str, Any]:
+    """Search for images using SearXNG meta-search engine.
+
+    Best for:
+    - Finding images related to a topic.
+    - Getting image URLs for visual content.
+
+    Returns:
+    - markdown (default): list with image URLs and source pages.
+    - json: {query, results: [{title, url, image_url, width, height}]}.
+
+    Args:
+        query: Image search query.
+        max_results: Max results to return.
+        freshness: "day"|"week"|"month"|"year".
+        format: "markdown" or "json".
+    """
+    if not query.strip():
+        raise ValueError("query must not be empty")
+
+    filters = SearchFilters(freshness=freshness)
+
+    try:
+        from .engines.searxng import SearxNGEngine
+        engine = SearxNGEngine()
+        results = await engine.search_images(query, max_results=max_results, filters=filters)
+    except Exception as e:
+        results = []
+        logger.warning("图片搜索失败: %s", e)
+
+    payload = {"query": query, "results": results, "count": len(results)}
+
+    if format == "json":
+        return payload
+
+    if not results:
+        return "_未找到图片结果。_\n"
+
+    lines = []
+    for i, r in enumerate(results, 1):
+        title = r.get("title", "(无标题)")
+        page_url = r.get("url", "")
+        img_url = r.get("image_url", "")
+        lines.append(f"{i}. **{title}**")
+        if img_url:
+            lines.append(f"   图片: <{img_url}>")
+        if page_url:
+            lines.append(f"   来源: <{page_url}>")
+    return "\n".join(lines)
 
 
 @mcp.tool(
@@ -547,15 +915,38 @@ def news_brief(topic: str, since: str = "day") -> str:
     return _news_brief(topic, since)
 
 
+@mcp.prompt(title="Compare sources")
+def compare_sources(question: str, sources: str) -> str:
+    """Instruct the model to compare and cross-reference multiple sources."""
+    from .prompts import compare_sources as _compare_sources
+    return _compare_sources(question, sources)
+
+
 # ── 服务器运行 ────────────────────────────────────────────
 
 
 def run() -> None:
     """启动 MCP 服务器（stdio 传输）。"""
+    import atexit
+
+    def _cleanup():
+        """清理资源。"""
+        cache.close()
+        # 关闭共享 aiohttp session
+        try:
+            from .fetchers.http import close_session
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(close_session())
+            loop.close()
+        except Exception:
+            pass
+
+    atexit.register(_cleanup)
+
     try:
         mcp.run()
     finally:
-        cache.close()
+        _cleanup()
 
 
 __all__ = ["mcp", "run"]

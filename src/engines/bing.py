@@ -11,6 +11,8 @@ import re
 import urllib.parse
 import xml.etree.ElementTree as ET
 
+import defusedxml.ElementTree as DefusedET
+
 from . import (
     Engine,
     SearchFilters,
@@ -76,8 +78,8 @@ class BingEngine(Engine):
         results: list[SearchResult] = []
 
         try:
-            root = ET.fromstring(html)
-        except ET.ParseError:
+            root = DefusedET.fromstring(html)
+        except (ET.ParseError, DefusedET.EntitiesForbidden):
             return results
 
         # RSS 格式：<rss><channel><item>...</item></channel></rss>
@@ -110,19 +112,11 @@ class BingEngine(Engine):
 
 
 def _strip_html(text: str) -> str:
-    """简单的 HTML 标签清理。"""
+    """清理 HTML 标签和实体。"""
     if not text:
         return ""
-    # 移除 HTML 标签
-    clean = re.sub(r"<[^>]+>", "", text)
-    # 解码 HTML 实体
-    clean = clean.replace("&amp;", "&")
-    clean = clean.replace("&lt;", "<")
-    clean = clean.replace("&gt;", ">")
-    clean = clean.replace("&quot;", '"')
-    clean = clean.replace("&#39;", "'")
-    clean = clean.replace("&nbsp;", " ")
-    return clean
+    from bs4 import BeautifulSoup
+    return BeautifulSoup(text, "lxml").get_text(separator=" ", strip=True)
 
 
 def _region_to_bing_market(region: str) -> str:

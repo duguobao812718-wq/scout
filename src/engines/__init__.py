@@ -23,6 +23,16 @@ from ..config import settings
 
 logger = logging.getLogger("scout.engines")
 
+__all__ = [
+    "Engine",
+    "SearchFilters",
+    "SearchResult",
+    "ENGINES",
+    "register_engine",
+    "get_engine",
+    "list_engines",
+]
+
 
 # ── 数据结构 ──────────────────────────────────────────────
 
@@ -101,27 +111,46 @@ class Engine(abc.ABC):
         4. parse() 解析结果
         5. apply_post_filters() 后过滤
         6. 设置 rank
+
+        错误通过 diagnostics 传递结构化信息给上层：
+        - error_kind: blocked / transient / misconfigured
+        - error: 错误描述
+        - gate: 门控类型（captcha / consent / login）
         """
+        from ..errors import SearchEngineError
+
         filters = filters or SearchFilters()
         diag = diagnostics or {}
 
         url = self.build_url(query, max_results, filters)
         diag.setdefault(self.name, {})["url"] = url
 
-        # 带重试的抓取
+        # 带重试的抓取（区分错误类型决定是否重试）
         html = None
         for attempt in range(max_retries + 1):
             try:
                 html = await self._fetch(url)
                 break
             except Exception as e:
-                if attempt < max_retries:
-                    logger.warning("引擎 %s 抓取失败 (尝试 %d/%d): %s", self.name, attempt + 1, max_retries + 1, e)
-                    import asyncio
-                    await asyncio.sleep(1.0 * (attempt + 1))
-                else:
+                error_kind = _classify_error(e)
+                if error_kind == "blocked":
+                    # 被封禁，不重试
                     diag[self.name]["error"] = str(e)
-                    logger.warning("引擎 %s 抓取失败: %s", self.name, e)
+                    diag[self.name]["error_kind"] = "blocked"
+                    logger.warning("引擎 %s 被封禁: %s", self.name, e)
+                    return []
+                elif attempt < max_retries and error_kind == "transient":
+                    # 临时错误，重试
+                    wait = 1.0 * (2 ** attempt)  # 指数退避
+                    logger.warning("引擎 %s 临时错误 (尝试 %d/%d), %.1fs 后重试: %s",
+                                   self.name, attempt + 1, max_retries + 1, wait, e)
+                    import asyncio
+                    await asyncio.sleep(wait)
+                else:
+                    # 其他错误或重试耗尽
+                    diag[self.name]["error"] = str(e)
+                    diag[self.name]["error_kind"] = error_kind
+                    logger.warning("引擎 %s 抓取失败 (%s): %s", self.name, error_kind, e)
                     return []
 
         if html is None:
@@ -131,6 +160,8 @@ class Engine(abc.ABC):
         gate = detect_gate(html)
         if gate:
             diag[self.name]["gate"] = gate
+            diag[self.name]["error_kind"] = "blocked"
+            diag[self.name]["error"] = f"触发 {gate} 门控"
             logger.warning("引擎 %s 触发门控: %s", self.name, gate)
             return []
 
@@ -139,6 +170,7 @@ class Engine(abc.ABC):
             results = self.parse(html)
         except Exception as e:
             diag[self.name]["parse_error"] = str(e)
+            diag[self.name]["error_kind"] = "misconfigured"
             logger.warning("引擎 %s 解析失败: %s", self.name, e)
             return []
 
@@ -237,13 +269,16 @@ def detect_gate(html: str) -> str | None:
     if ('class="h-captcha"' in html and 'data-sitekey' in html):
         return "captcha"
 
-    # Consent（GDPR 等）- 只检测实际的 consent 弹窗
+    # Consent（GDPR 等）- 只检测实际的 consent 弹窗按钮/横幅
+    # 不使用 "we use cookies" 等宽泛模式，避免误报
     consent_patterns = [
         "accept all cookies",
         "accept cookies and continue",
-        "we use cookies",
         "cookie consent",
         "gdpr consent",
+        "this site uses cookies",
+        "by clicking accept",
+        "click accept to agree",
     ]
     for pattern in consent_patterns:
         if pattern in lower:
@@ -331,6 +366,44 @@ def freshness_value(
     return engine_map.get(freshness)
 
 
+# ── 错误分类 ──────────────────────────────────────────────
+
+
+def _classify_error(e: Exception) -> str:
+    """将异常分类为错误类型。
+
+    返回: "blocked" / "transient" / "misconfigured"
+    """
+    # HTTP 状态码判断
+    status = getattr(e, "status", None) or getattr(e, "code", None)
+    if status is not None:
+        if status in (403, 429, 503):
+            return "blocked"
+        if status >= 500:
+            return "transient"
+
+    # 异常类型判断
+    err_type = type(e).__name__.lower()
+    err_msg = str(e).lower()
+
+    # 网络临时错误
+    if any(kw in err_type for kw in ("timeout", "connectionerror", "clienterror")):
+        return "transient"
+    if "timeout" in err_msg or "connection" in err_msg:
+        return "transient"
+
+    # 被封禁
+    if "captcha" in err_msg or "blocked" in err_msg or "403" in err_msg or "429" in err_msg:
+        return "blocked"
+
+    # DNS / 配置错误
+    if "dns" in err_msg or "name or service not known" in err_msg or "getaddrinfo" in err_msg:
+        return "misconfigured"
+
+    # 默认为临时错误（可重试）
+    return "transient"
+
+
 # ── 引擎注册表 ────────────────────────────────────────────
 
 ENGINES: dict[str, Engine] = {}
@@ -359,7 +432,7 @@ def list_engines() -> list[str]:
 
 def _register_builtin_engines() -> None:
     """注册内置引擎（延迟导入避免循环依赖）。"""
-    from . import duckduckgo, bing, brave, google  # noqa: F401
+    from . import duckduckgo, bing, brave, google, mojeek, searxng, academic  # noqa: F401
 
     # 引擎在各自的模块中通过 register_engine() 自注册
 

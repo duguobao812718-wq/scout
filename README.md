@@ -4,9 +4,10 @@
 
 ## ✨ 特性
 
-- 🔍 **多引擎搜索** — Bing (RSS)、Brave、Google、DuckDuckGo
-- 🧠 **语义搜索** — 基于 Sentence Transformers + FAISS
-- 🌐 **网页抓取** — HTML 解析、Playwright 浏览器渲染
+- 🔍 **多引擎搜索** — Bing、Brave、Google、DuckDuckGo、Mojeek、SearXNG、Semantic Scholar、arXiv
+- 🧠 **语义搜索** — Sentence Transformers + FAISS 意义匹配
+- 🖼️ **图片搜索** — SearXNG 图片分类搜索
+- 🌐 **网页抓取** — HTML 解析、curl_cffi 浏览器指纹
 - 📦 **完全免费** — 无 API key 要求，无使用限制
 - 🤖 **AI Agent 适配** — MCP 协议，结构化输出
 - ⚡ **高性能** — 并发搜索、SQLite 缓存、RRF 结果合并
@@ -57,12 +58,25 @@ SCOUT_LOG_LEVEL=INFO
 
 | 工具 | 功能 | 参数 |
 |------|------|------|
-| `search` | 多引擎搜索 | query, engines, max_results, format |
+| `search` | 多引擎搜索 | query, engines, max_results, freshness, include_domains, exclude_domains, format |
 | `fetch` | 抓取单个 URL | url, format |
+| `fetch_batch` | 批量抓取 | urls, format |
 | `engines` | 列出可用引擎 | - |
-| `research` | 搜索 + 抓取组合 | question, depth, format |
+| `cache_search` | 搜索已缓存页面 | query, limit, format |
+| `semantic_search` | 语义搜索已索引页面 | query, top_k, format |
+| `semantic_index_page` | 索引页面供语义搜索 | url, format |
+| `image_search` | 图片搜索 | query, max_results, freshness, format |
+| `research` | 搜索 + 抓取组合 | question, depth, freshness, format |
 | `read_doc` | 读取 PDF 文档 | source, start, length, format |
 | `extract_structured` | 提取结构化数据 | url, format |
+
+## 🔒 安全特性
+
+- SSRF 防护（DNS 解析 + IP 范围验证 + 云元数据拦截）
+- XML 外部实体防护（defusedxml）
+- PDF 下载大小限制 + 超时控制
+- 令牌桶限速
+- 缓存线程安全（双重检查锁定）
 
 ## 💡 MCP 提示词
 
@@ -71,31 +85,36 @@ SCOUT_LOG_LEVEL=INFO
 | `research_prompt` | 深入研究提示词 |
 | `factcheck_prompt` | 事实核查提示词 |
 | `news_brief` | 新闻简报提示词 |
+| `compare_sources` | 多源对比提示词 |
 
 ## 📁 项目结构
 
 ```
 scout/
 ├── src/
-│   ├── server.py            # MCP 服务器（5 工具 + 3 提示词）
+│   ├── server.py            # MCP 服务器（7 工具 + 4 提示词）
 │   ├── config.py            # 配置模块（pydantic-settings）
-│   ├── cache.py             # SQLite 缓存 + FTS5
+│   ├── cache.py             # SQLite 缓存 + FTS5 + stale-while-revalidate
+│   ├── utils.py             # 公共工具函数（URL 归一化、标题相似度）
 │   ├── ratelimit.py         # 令牌桶限速器
 │   ├── formatting.py        # Markdown/JSON 格式化器
 │   ├── errors.py            # 错误类型层级
 │   ├── url_safety.py        # SSRF 防护
-│   ├── semantic.py          # 语义搜索（Sentence Transformers + FAISS）
-│   ├── deep.py              # 深度搜索（多轮搜索）
+│   ├── semantic.py          # 语义搜索（实验性，可选依赖）
 │   ├── structured.py        # 结构化数据提取
 │   ├── prompts.py           # MCP 提示词模板
 │   ├── engines/             # 搜索引擎
 │   │   ├── bing.py          # Bing (RSS)
-│   │   ├── brave.py         # Brave
-│   │   ├── google.py        # Google
-│   │   └── duckduckgo.py    # DuckDuckGo
-│   └── fetchers/            # 抓取器
-│       ├── http.py          # HTTP 抓取
-│       └── browser.py       # Playwright 浏览器
+│   │   ├── brave.py         # Brave (curl_cffi)
+│   │   ├── google.py        # Google (curl_cffi)
+│   │   ├── duckduckgo.py    # DuckDuckGo (curl_cffi)
+│   │   ├── mojeek.py        # Mojeek (独立索引)
+│   │   ├── searxng.py       # SearXNG (元搜索，多实例竞速)
+│   │   └── academic.py      # Semantic Scholar + arXiv (学术搜索)
+│   └── fetchers/
+│       ├── http.py          # HTTP 抓取（aiohttp + curl_cffi）
+│       └── documents.py     # PDF 文档读取
+├── tests/                   # 69 个测试
 ├── pyproject.toml
 └── .env
 ```
@@ -104,8 +123,8 @@ scout/
 
 - **语言：** Python 3.10+
 - **协议：** MCP (Model Context Protocol)
-- **搜索引擎：** Bing (RSS)、Brave、Google、DuckDuckGo
-- **网页抓取：** aiohttp、BeautifulSoup4、Playwright
+- **搜索引擎：** Bing (RSS)、Brave、Google、DuckDuckGo、Mojeek、SearXNG、Semantic Scholar、arXiv
+- **网页抓取：** aiohttp、curl_cffi、BeautifulSoup4
 - **缓存：** SQLite + FTS5
 - **语义搜索：** Sentence Transformers + FAISS
 - **并发：** asyncio
